@@ -61,10 +61,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: lint-results
-          path: '**/build/reports/lint-results-debug.html'
+          path: |
+            **/build/reports/lint-results-debug.html
+            **/build/reports/lint-results-debug.xml
+          if-no-files-found: ignore
           retention-days: 14
 
       - name: Upload debug APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
