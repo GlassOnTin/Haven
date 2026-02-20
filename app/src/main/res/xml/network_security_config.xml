@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Haven only makes SSH connections, not HTTP.
+         This config ensures no cleartext HTTP is allowed
+         if any HTTP client is ever added. -->
+    <base-config cleartextTrafficPermitted="false" />
+</network-security-config>

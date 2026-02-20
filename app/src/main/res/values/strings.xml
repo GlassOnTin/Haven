@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Haven</string>
+    <string name="nav_connections">Connections</string>
+    <string name="nav_terminal">Terminal</string>
+    <string name="nav_sftp">Files</string>
+    <string name="nav_keys">Keys</string>
+    <string name="nav_settings">Settings</string>
+</resources>
