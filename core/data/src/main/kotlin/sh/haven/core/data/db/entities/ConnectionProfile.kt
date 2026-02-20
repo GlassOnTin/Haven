@@ -1,0 +1,25 @@
+package sh.haven.core.data.db.entities
+
+import androidx.room.Entity
+import androidx.room.PrimaryKey
+import java.util.UUID
+
+@Entity(tableName = "connection_profiles")
+data class ConnectionProfile(
+    @PrimaryKey
+    val id: String = UUID.randomUUID().toString(),
+    val label: String,
+    val host: String,
+    val port: Int = 22,
+    val username: String,
+    val authType: AuthType = AuthType.PASSWORD,
+    val keyId: String? = null,
+    val colorTag: Int = 0,
+    val lastConnected: Long? = null,
+    val sortOrder: Int = 0,
+) {
+    enum class AuthType {
+        PASSWORD,
+        KEY,
+    }
+}

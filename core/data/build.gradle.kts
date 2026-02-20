@@ -11,6 +11,10 @@ android {
 
     defaultConfig {
         minSdk = 26
+
+        ksp {
+            arg("room.schemaLocation", "$projectDir/schemas")
+        }
     }
 
     compileOptions {
@@ -33,4 +37,6 @@ dependencies {
     implementation(libs.coroutines.core)
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
+
+    testImplementation(libs.junit)
 }
