@@ -20,7 +20,9 @@ object DatabaseModule {
             context,
             HavenDatabase::class.java,
             "haven.db",
-        ).build()
+        )
+            .addMigrations(HavenDatabase.MIGRATION_1_2)
+            .build()
     }
 
     @Provides
@@ -31,4 +33,7 @@ object DatabaseModule {
 
     @Provides
     fun provideConnectionLogDao(db: HavenDatabase): ConnectionLogDao = db.connectionLogDao()
+
+    @Provides
+    fun provideSshKeyDao(db: HavenDatabase): SshKeyDao = db.sshKeyDao()
 }
