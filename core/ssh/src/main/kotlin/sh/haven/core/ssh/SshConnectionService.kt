@@ -60,12 +60,12 @@ class SshConnectionService : Service() {
         )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(R.drawable.ic_haven_notification)
             .setContentTitle("Haven — $count active session${if (count != 1) "s" else ""}")
             .setContentText(labels.ifEmpty { "Connecting..." })
             .setOngoing(true)
             .addAction(
-                android.R.drawable.ic_delete,
+                R.drawable.ic_haven_notification,
                 "Disconnect All",
                 disconnectPending,
             )

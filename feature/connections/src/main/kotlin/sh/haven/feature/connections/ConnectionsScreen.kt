@@ -57,12 +57,21 @@ import sh.haven.core.ssh.SshSessionManager.SessionState
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ConnectionsScreen(
+    onNavigateToTerminal: (profileId: String) -> Unit = {},
     viewModel: ConnectionsViewModel = hiltViewModel(),
 ) {
     val connections by viewModel.connections.collectAsState()
     val sessions by viewModel.sessions.collectAsState()
     val connectingId by viewModel.connectingId.collectAsState()
     val error by viewModel.error.collectAsState()
+    val navigateToTerminal by viewModel.navigateToTerminal.collectAsState()
+
+    LaunchedEffect(navigateToTerminal) {
+        navigateToTerminal?.let { profileId ->
+            onNavigateToTerminal(profileId)
+            viewModel.onNavigated()
+        }
+    }
 
     var showAddDialog by remember { mutableStateOf(false) }
     var editingProfile by remember { mutableStateOf<ConnectionProfile?>(null) }
@@ -159,7 +168,7 @@ fun ConnectionsScreen(
                             isConnecting = connectingId == profile.id,
                             onTap = {
                                 if (session?.status == SessionState.Status.CONNECTED) {
-                                    // Already connected — could navigate to terminal
+                                    onNavigateToTerminal(profile.id)
                                 } else {
                                     connectingProfile = profile
                                 }

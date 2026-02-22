@@ -8,7 +8,7 @@ plugins {
 
 android {
     namespace = "sh.haven.app"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "sh.haven.app"
@@ -36,9 +36,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
 
     buildFeatures {
         compose = true
@@ -86,4 +83,10 @@ dependencies {
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.compose.ui.test)
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
 }

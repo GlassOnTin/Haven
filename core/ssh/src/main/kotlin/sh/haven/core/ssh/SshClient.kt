@@ -1,5 +1,6 @@
 package sh.haven.core.ssh
 
+import com.jcraft.jsch.ChannelShell
 import com.jcraft.jsch.JSch
 import com.jcraft.jsch.Session
 import kotlinx.coroutines.Dispatchers
@@ -27,7 +28,8 @@ class SshClient : Closeable {
         disconnect()
 
         val sess = jsch.getSession(config.username, config.host, config.port)
-        sess.setConfig("StrictHostKeyChecking", "ask")
+        // TODO(M5): implement proper known hosts verification with KnownHost entity
+        sess.setConfig("StrictHostKeyChecking", "no")
         sess.serverAliveInterval = 15_000
         sess.serverAliveCountMax = 3
 
@@ -47,6 +49,29 @@ class SshClient : Closeable {
 
         sess.connect(connectTimeoutMs)
         session = sess
+    }
+
+    /**
+     * Open an interactive shell channel on the current SSH session.
+     * Must be called after [connect].
+     */
+    fun openShellChannel(
+        term: String = "xterm-256color",
+        cols: Int = 80,
+        rows: Int = 24,
+    ): ChannelShell {
+        val sess = session ?: throw IllegalStateException("Not connected")
+        val channel = sess.openChannel("shell") as ChannelShell
+        channel.setPtyType(term, cols, rows, 0, 0)
+        channel.connect()
+        return channel
+    }
+
+    /**
+     * Resize the PTY of an open shell channel.
+     */
+    fun resizeShell(channel: ChannelShell, cols: Int, rows: Int) {
+        channel.setPtySize(cols, rows, 0, 0)
     }
 
     /**

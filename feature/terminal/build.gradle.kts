@@ -8,7 +8,7 @@ plugins {
 
 android {
     namespace = "sh.haven.feature.terminal"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         minSdk = 26
@@ -19,9 +19,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
 
     buildFeatures {
         compose = true
@@ -33,8 +30,21 @@ dependencies {
     implementation(project(":core:ssh"))
     implementation(project(":core:security"))
 
+    implementation(libs.termlib)
+
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
     implementation(libs.hilt.navigation.compose)
     implementation(libs.lifecycle.viewmodel)
+    implementation(libs.lifecycle.runtime)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.mockk)
+    testImplementation(libs.coroutines.test)
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
 }

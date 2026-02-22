@@ -1,8 +1,11 @@
 package sh.haven.feature.connections
 
+import android.content.Context
+import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -13,11 +16,13 @@ import sh.haven.core.data.db.entities.ConnectionProfile
 import sh.haven.core.data.repository.ConnectionRepository
 import sh.haven.core.ssh.ConnectionConfig
 import sh.haven.core.ssh.SshClient
+import sh.haven.core.ssh.SshConnectionService
 import sh.haven.core.ssh.SshSessionManager
 import javax.inject.Inject
 
 @HiltViewModel
 class ConnectionsViewModel @Inject constructor(
+    @ApplicationContext private val appContext: Context,
     private val repository: ConnectionRepository,
     private val sessionManager: SshSessionManager,
 ) : ViewModel() {
@@ -32,6 +37,14 @@ class ConnectionsViewModel @Inject constructor(
 
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
+
+    /** Emitted once after a successful connect to trigger navigation to terminal. */
+    private val _navigateToTerminal = MutableStateFlow<String?>(null)
+    val navigateToTerminal: StateFlow<String?> = _navigateToTerminal.asStateFlow()
+
+    fun onNavigated() {
+        _navigateToTerminal.value = null
+    }
 
     fun saveConnection(profile: ConnectionProfile) {
         viewModelScope.launch {
@@ -62,8 +75,11 @@ class ConnectionsViewModel @Inject constructor(
                     authMethod = ConnectionConfig.AuthMethod.Password(password),
                 )
                 client.connect(config)
+                sessionManager.openShellForSession(profile.id)
                 sessionManager.updateStatus(profile.id, SshSessionManager.SessionState.Status.CONNECTED)
                 repository.markConnected(profile.id)
+                startForegroundServiceIfNeeded()
+                _navigateToTerminal.value = profile.id
             } catch (e: Exception) {
                 sessionManager.updateStatus(profile.id, SshSessionManager.SessionState.Status.ERROR)
                 _error.value = e.message ?: "Connection failed"
@@ -80,6 +96,11 @@ class ConnectionsViewModel @Inject constructor(
 
     fun dismissError() {
         _error.value = null
+    }
+
+    private fun startForegroundServiceIfNeeded() {
+        val intent = Intent(appContext, SshConnectionService::class.java)
+        appContext.startForegroundService(intent)
     }
 
     fun parseQuickConnect(input: String): ConnectionProfile? {

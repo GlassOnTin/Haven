@@ -1,20 +1,21 @@
 [versions]
-kotlin = "2.1.0"
-agp = "8.7.3"
-compose-bom = "2025.01.00"
-hilt = "2.53"
-room = "2.6.1"
-datastore = "1.1.1"
+kotlin = "2.3.10"
+agp = "8.9.1"
+compose-bom = "2026.01.01"
+hilt = "2.58"
+room = "2.7.1"
+datastore = "1.1.4"
 tink = "1.17.0"
 biometric = "1.2.0-alpha05"
 jsch = "0.2.21"
+termlib = "0.0.22"
 bouncycastle = "1.79"
-coroutines = "1.9.0"
-lifecycle = "2.8.7"
-navigation = "2.8.5"
-core-ktx = "1.15.0"
-activity-compose = "1.9.3"
-ksp = "2.1.0-1.0.29"
+coroutines = "1.10.1"
+lifecycle = "2.9.0"
+navigation = "2.9.0"
+core-ktx = "1.17.0"
+activity-compose = "1.10.1"
+ksp = "2.3.6"
 
 [libraries]
 # Compose BOM
@@ -55,13 +56,16 @@ biometric = { group = "androidx.biometric", name = "biometric", version.ref = "b
 jsch = { group = "com.github.mwiede", name = "jsch", version.ref = "jsch" }
 bouncycastle = { group = "org.bouncycastle", name = "bcprov-jdk18on", version.ref = "bouncycastle" }
 
+# Terminal
+termlib = { group = "org.connectbot", name = "termlib", version.ref = "termlib" }
+
 # Coroutines
 coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
 coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 
 # Testing
 junit = { group = "junit", name = "junit", version = "4.13.2" }
-mockk = { group = "io.mockk", name = "mockk", version = "1.13.13" }
+mockk = { group = "io.mockk", name = "mockk", version = "1.13.16" }
 coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
 turbine = { group = "app.cash.turbine", name = "turbine", version = "1.2.0" }
 robolectric = { group = "org.robolectric", name = "robolectric", version = "4.14.1" }

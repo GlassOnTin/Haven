@@ -1,5 +1,6 @@
 package sh.haven.core.ssh
 
+import com.jcraft.jsch.ChannelShell
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,6 +20,8 @@ class SshSessionManager @Inject constructor() {
         val label: String,
         val status: Status,
         val client: SshClient,
+        val shellChannel: ChannelShell? = null,
+        val terminalSession: TerminalSession? = null,
     ) {
         enum class Status { CONNECTING, CONNECTED, DISCONNECTED, ERROR }
     }
@@ -53,8 +56,69 @@ class SshSessionManager @Inject constructor() {
         }
     }
 
+    /**
+     * Open a shell channel on the SSH session and store it in the session state.
+     * Must be called after the SSH session is connected.
+     */
+    fun openShellForSession(profileId: String) {
+        val session = _sessions.value[profileId] ?: return
+        val channel = session.client.openShellChannel()
+        attachShellChannel(profileId, channel)
+    }
+
+    fun attachShellChannel(profileId: String, channel: ChannelShell) {
+        _sessions.update { map ->
+            val existing = map[profileId] ?: return@update map
+            map + (profileId to existing.copy(shellChannel = channel))
+        }
+    }
+
+    /**
+     * Create a [TerminalSession] for a connected session that has a shell channel.
+     * Returns the session, or null if the session/channel doesn't exist.
+     * The [onDataReceived] callback delivers SSH output bytes.
+     * Call [TerminalSession.start] after wiring up the emulator.
+     */
+    fun createTerminalSession(
+        profileId: String,
+        onDataReceived: (ByteArray, Int, Int) -> Unit,
+    ): TerminalSession? {
+        val session = _sessions.value[profileId] ?: return null
+        val channel = session.shellChannel ?: return null
+        val termSession = TerminalSession(
+            profileId = profileId,
+            label = session.label,
+            channel = channel,
+            client = session.client,
+            onDataReceived = onDataReceived,
+        )
+        attachTerminalSession(profileId, termSession)
+        return termSession
+    }
+
+    /**
+     * Whether a session has a shell channel ready but no terminal session yet.
+     */
+    fun isReadyForTerminal(profileId: String): Boolean {
+        val session = _sessions.value[profileId] ?: return false
+        return session.status == SessionState.Status.CONNECTED &&
+            session.shellChannel != null &&
+            session.terminalSession == null
+    }
+
+    fun attachTerminalSession(profileId: String, terminalSession: TerminalSession) {
+        _sessions.update { map ->
+            val existing = map[profileId] ?: return@update map
+            map + (profileId to existing.copy(terminalSession = terminalSession))
+        }
+    }
+
     fun removeSession(profileId: String) {
         val session = _sessions.value[profileId]
+        session?.terminalSession?.close()
+        if (session?.shellChannel?.isConnected == true) {
+            session.shellChannel.disconnect()
+        }
         session?.client?.disconnect()
         _sessions.update { it - profileId }
     }
@@ -62,7 +126,13 @@ class SshSessionManager @Inject constructor() {
     fun getSession(profileId: String): SessionState? = _sessions.value[profileId]
 
     fun disconnectAll() {
-        _sessions.value.values.forEach { it.client.disconnect() }
+        _sessions.value.values.forEach {
+            it.terminalSession?.close()
+            if (it.shellChannel?.isConnected == true) {
+                it.shellChannel.disconnect()
+            }
+            it.client.disconnect()
+        }
         _sessions.update { emptyMap() }
     }
 }

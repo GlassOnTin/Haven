@@ -121,4 +121,56 @@ class SshSessionManagerTest {
 
         assertFalse(manager.hasActiveSessions)
     }
+
+    @Test
+    fun `attachShellChannel stores channel in session state`() {
+        val client = mockk<SshClient>(relaxed = true)
+        val channel = mockk<com.jcraft.jsch.ChannelShell>(relaxed = true)
+        manager.registerSession("id1", "Server", client)
+        manager.attachShellChannel("id1", channel)
+
+        val session = manager.getSession("id1")
+        assertNotNull(session?.shellChannel)
+        assertEquals(channel, session?.shellChannel)
+    }
+
+    @Test
+    fun `attachTerminalSession stores terminal session in state`() {
+        val client = mockk<SshClient>(relaxed = true)
+        val terminalSession = mockk<TerminalSession>(relaxed = true)
+        manager.registerSession("id1", "Server", client)
+        manager.attachTerminalSession("id1", terminalSession)
+
+        val session = manager.getSession("id1")
+        assertNotNull(session?.terminalSession)
+    }
+
+    @Test
+    fun `removeSession closes terminal session`() {
+        val client = mockk<SshClient>(relaxed = true)
+        val terminalSession = mockk<TerminalSession>(relaxed = true)
+        manager.registerSession("id1", "Server", client)
+        manager.attachTerminalSession("id1", terminalSession)
+        manager.removeSession("id1")
+
+        verify { terminalSession.close() }
+        verify { client.disconnect() }
+    }
+
+    @Test
+    fun `disconnectAll closes all terminal sessions`() {
+        val c1 = mockk<SshClient>(relaxed = true)
+        val c2 = mockk<SshClient>(relaxed = true)
+        val t1 = mockk<TerminalSession>(relaxed = true)
+        manager.registerSession("id1", "S1", c1)
+        manager.registerSession("id2", "S2", c2)
+        manager.attachTerminalSession("id1", t1)
+
+        manager.disconnectAll()
+
+        verify { t1.close() }
+        verify { c1.disconnect() }
+        verify { c2.disconnect() }
+        assertTrue(manager.sessions.value.isEmpty())
+    }
 }
