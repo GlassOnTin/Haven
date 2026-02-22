@@ -11,7 +11,9 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import sh.haven.core.data.db.entities.ConnectionProfile
 import sh.haven.core.data.repository.ConnectionRepository
 import sh.haven.core.ssh.ConnectionConfig
@@ -68,14 +70,16 @@ class ConnectionsViewModel @Inject constructor(
             sessionManager.registerSession(profile.id, profile.label, client)
 
             try {
-                val config = ConnectionConfig(
-                    host = profile.host,
-                    port = profile.port,
-                    username = profile.username,
-                    authMethod = ConnectionConfig.AuthMethod.Password(password),
-                )
-                client.connect(config)
-                sessionManager.openShellForSession(profile.id)
+                withContext(Dispatchers.IO) {
+                    val config = ConnectionConfig(
+                        host = profile.host,
+                        port = profile.port,
+                        username = profile.username,
+                        authMethod = ConnectionConfig.AuthMethod.Password(password),
+                    )
+                    client.connect(config)
+                    sessionManager.openShellForSession(profile.id)
+                }
                 sessionManager.updateStatus(profile.id, SshSessionManager.SessionState.Status.CONNECTED)
                 repository.markConnected(profile.id)
                 startForegroundServiceIfNeeded()
