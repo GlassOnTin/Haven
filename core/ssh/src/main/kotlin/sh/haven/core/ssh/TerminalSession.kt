@@ -1,10 +1,14 @@
 package sh.haven.core.ssh
 
+import android.util.Log
 import com.jcraft.jsch.ChannelShell
 import java.io.Closeable
 import java.io.InputStream
 import java.io.OutputStream
+import java.util.concurrent.Executors
 import kotlin.concurrent.thread
+
+private const val TAG = "TerminalSession"
 
 /**
  * Bridges a JSch [ChannelShell] to a terminal emulator.
@@ -22,6 +26,11 @@ class TerminalSession(
 
     private val sshInput: InputStream = channel.inputStream
     private val sshOutput: OutputStream = channel.outputStream
+
+    /** Single-thread executor for serialising writes off the main thread. */
+    private val writeExecutor = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "ssh-writer-$profileId").apply { isDaemon = true }
+    }
 
     @Volatile
     private var closed = false
@@ -56,13 +65,24 @@ class TerminalSession(
         }
     }
 
+    /**
+     * Forward keyboard input to the remote shell.
+     * Safe to call from any thread — writes are dispatched to a background thread
+     * to avoid NetworkOnMainThreadException.
+     */
     fun sendToSsh(data: ByteArray) {
-        if (closed || !channel.isConnected) return
-        try {
-            sshOutput.write(data)
-            sshOutput.flush()
-        } catch (_: Exception) {
-            // Channel closed
+        if (closed || !channel.isConnected) {
+            Log.d(TAG, "sendToSsh: dropping ${data.size} bytes (closed=$closed connected=${channel.isConnected})")
+            return
+        }
+        writeExecutor.execute {
+            if (closed || !channel.isConnected) return@execute
+            try {
+                sshOutput.write(data)
+                sshOutput.flush()
+            } catch (e: Exception) {
+                Log.e(TAG, "sendToSsh: write failed", e)
+            }
         }
     }
 
@@ -73,6 +93,7 @@ class TerminalSession(
     override fun close() {
         if (closed) return
         closed = true
+        writeExecutor.shutdown()
         try { channel.disconnect() } catch (_: Exception) {}
         readerThread?.interrupt()
     }
