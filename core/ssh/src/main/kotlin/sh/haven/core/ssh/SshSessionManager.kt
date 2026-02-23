@@ -1,12 +1,16 @@
 package sh.haven.core.ssh
 
+import android.util.Log
 import com.jcraft.jsch.ChannelShell
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import java.util.concurrent.Executors
 import javax.inject.Inject
 import javax.inject.Singleton
+
+private const val TAG = "SshSessionManager"
 
 /**
  * Manages active SSH sessions across the app.
@@ -28,6 +32,11 @@ class SshSessionManager @Inject constructor() {
 
     private val _sessions = MutableStateFlow<Map<String, SessionState>>(emptyMap())
     val sessions: StateFlow<Map<String, SessionState>> = _sessions.asStateFlow()
+
+    /** Background executor for disconnect I/O so callers on main thread don't block. */
+    private val ioExecutor = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "ssh-session-io").apply { isDaemon = true }
+    }
 
     val activeSessions: List<SessionState>
         get() = _sessions.value.values.filter {
@@ -114,25 +123,34 @@ class SshSessionManager @Inject constructor() {
     }
 
     fun removeSession(profileId: String) {
-        val session = _sessions.value[profileId]
-        session?.terminalSession?.close()
-        if (session?.shellChannel?.isConnected == true) {
-            session.shellChannel.disconnect()
-        }
-        session?.client?.disconnect()
+        val session = _sessions.value[profileId] ?: return
         _sessions.update { it - profileId }
+        ioExecutor.execute { tearDown(session) }
     }
 
     fun getSession(profileId: String): SessionState? = _sessions.value[profileId]
 
     fun disconnectAll() {
-        _sessions.value.values.forEach {
-            it.terminalSession?.close()
-            if (it.shellChannel?.isConnected == true) {
-                it.shellChannel.disconnect()
-            }
-            it.client.disconnect()
-        }
+        val snapshot = _sessions.value.values.toList()
         _sessions.update { emptyMap() }
+        ioExecutor.execute {
+            snapshot.forEach { tearDown(it) }
+        }
+    }
+
+    private fun tearDown(session: SessionState) {
+        try { session.terminalSession?.close() } catch (e: Exception) {
+            Log.e(TAG, "tearDown: terminalSession.close() failed", e)
+        }
+        try {
+            if (session.shellChannel?.isConnected == true) {
+                session.shellChannel.disconnect()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "tearDown: shellChannel.disconnect() failed", e)
+        }
+        try { session.client.disconnect() } catch (e: Exception) {
+            Log.e(TAG, "tearDown: client.disconnect() failed", e)
+        }
     }
 }

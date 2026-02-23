@@ -87,7 +87,13 @@ class TerminalSession(
     }
 
     fun resize(cols: Int, rows: Int) {
-        client.resizeShell(channel, cols, rows)
+        writeExecutor.execute {
+            try {
+                client.resizeShell(channel, cols, rows)
+            } catch (e: Exception) {
+                Log.e(TAG, "resize failed", e)
+            }
+        }
     }
 
     override fun close() {
