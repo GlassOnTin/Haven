@@ -1,11 +1,18 @@
 package sh.haven.core.ssh
 
+import com.jcraft.jsch.ChannelExec
 import com.jcraft.jsch.ChannelShell
 import com.jcraft.jsch.JSch
 import com.jcraft.jsch.Session
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.Closeable
+
+data class ExecResult(
+    val exitStatus: Int,
+    val stdout: String,
+    val stderr: String,
+)
 
 /**
  * Wrapper around JSch providing coroutine-based SSH connectivity.
@@ -72,6 +79,38 @@ class SshClient : Closeable {
      */
     fun resizeShell(channel: ChannelShell, cols: Int, rows: Int) {
         channel.setPtySize(cols, rows, 0, 0)
+    }
+
+    /**
+     * Execute a command on the remote host and return stdout, stderr, and exit status.
+     * Must be called after [connect].
+     */
+    suspend fun execCommand(command: String): ExecResult = withContext(Dispatchers.IO) {
+        val sess = session ?: throw IllegalStateException("Not connected")
+        val channel = sess.openChannel("exec") as ChannelExec
+        channel.setCommand(command)
+        channel.inputStream = null
+
+        val stdout = channel.inputStream
+        val stderr = channel.errStream
+
+        channel.connect()
+
+        val outBytes = stdout.readBytes()
+        val errBytes = stderr.readBytes()
+
+        // Wait for channel to close so exitStatus is available
+        while (!channel.isClosed) {
+            Thread.sleep(50)
+        }
+
+        val result = ExecResult(
+            exitStatus = channel.exitStatus,
+            stdout = outBytes.decodeToString(),
+            stderr = errBytes.decodeToString(),
+        )
+        channel.disconnect()
+        result
     }
 
     /**

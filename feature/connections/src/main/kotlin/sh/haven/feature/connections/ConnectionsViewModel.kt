@@ -15,7 +15,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import sh.haven.core.data.db.entities.ConnectionProfile
+import sh.haven.core.data.db.entities.SshKey
 import sh.haven.core.data.repository.ConnectionRepository
+import sh.haven.core.data.repository.SshKeyRepository
 import sh.haven.core.ssh.ConnectionConfig
 import sh.haven.core.ssh.SshClient
 import sh.haven.core.ssh.SshConnectionService
@@ -27,9 +29,13 @@ class ConnectionsViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context,
     private val repository: ConnectionRepository,
     private val sessionManager: SshSessionManager,
+    private val sshKeyRepository: SshKeyRepository,
 ) : ViewModel() {
 
     val connections: StateFlow<List<ConnectionProfile>> = repository.observeAll()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val sshKeys: StateFlow<List<SshKey>> = sshKeyRepository.observeAll()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val sessions: StateFlow<Map<String, SshSessionManager.SessionState>> = sessionManager.sessions
@@ -100,6 +106,51 @@ class ConnectionsViewModel @Inject constructor(
 
     fun dismissError() {
         _error.value = null
+    }
+
+    private val _deploySuccess = MutableStateFlow(false)
+    val deploySuccess: StateFlow<Boolean> = _deploySuccess.asStateFlow()
+
+    fun dismissDeploySuccess() {
+        _deploySuccess.value = false
+    }
+
+    fun deployKey(profile: ConnectionProfile, keyId: String, password: String) {
+        viewModelScope.launch {
+            _error.value = null
+            val key = sshKeyRepository.getById(keyId)
+            if (key == null) {
+                _error.value = "SSH key not found"
+                return@launch
+            }
+
+            val client = SshClient()
+            try {
+                val config = ConnectionConfig(
+                    host = profile.host,
+                    port = profile.port,
+                    username = profile.username,
+                    authMethod = ConnectionConfig.AuthMethod.Password(password),
+                )
+                client.connect(config)
+
+                val pubKey = key.publicKeyOpenSsh.trim()
+                val command = "mkdir -p ~/.ssh && chmod 700 ~/.ssh && " +
+                    "echo '${pubKey}' >> ~/.ssh/authorized_keys && " +
+                    "chmod 600 ~/.ssh/authorized_keys"
+
+                val result = client.execCommand(command)
+                if (result.exitStatus != 0) {
+                    _error.value = "Deploy failed: ${result.stderr.ifBlank { "exit ${result.exitStatus}" }}"
+                } else {
+                    _deploySuccess.value = true
+                }
+            } catch (e: Exception) {
+                _error.value = "Deploy failed: ${e.message ?: "unknown error"}"
+            } finally {
+                client.disconnect()
+            }
+        }
     }
 
     private fun startForegroundServiceIfNeeded() {

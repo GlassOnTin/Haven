@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LinkOff
+import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -61,10 +62,12 @@ fun ConnectionsScreen(
     viewModel: ConnectionsViewModel = hiltViewModel(),
 ) {
     val connections by viewModel.connections.collectAsState()
+    val sshKeys by viewModel.sshKeys.collectAsState()
     val sessions by viewModel.sessions.collectAsState()
     val connectingId by viewModel.connectingId.collectAsState()
     val error by viewModel.error.collectAsState()
     val navigateToTerminal by viewModel.navigateToTerminal.collectAsState()
+    val deploySuccess by viewModel.deploySuccess.collectAsState()
 
     LaunchedEffect(navigateToTerminal) {
         navigateToTerminal?.let { profileId ->
@@ -76,6 +79,7 @@ fun ConnectionsScreen(
     var showAddDialog by remember { mutableStateOf(false) }
     var editingProfile by remember { mutableStateOf<ConnectionProfile?>(null) }
     var connectingProfile by remember { mutableStateOf<ConnectionProfile?>(null) }
+    var deployingProfile by remember { mutableStateOf<ConnectionProfile?>(null) }
     var quickConnectText by remember { mutableStateOf("") }
 
     val snackbarHostState = remember { SnackbarHostState() }
@@ -84,6 +88,13 @@ fun ConnectionsScreen(
         error?.let {
             snackbarHostState.showSnackbar(it)
             viewModel.dismissError()
+        }
+    }
+
+    LaunchedEffect(deploySuccess) {
+        if (deploySuccess) {
+            snackbarHostState.showSnackbar("SSH key deployed successfully")
+            viewModel.dismissDeploySuccess()
         }
     }
 
@@ -115,6 +126,18 @@ fun ConnectionsScreen(
             onConnect = { password ->
                 viewModel.connect(profile, password)
                 connectingProfile = null
+            },
+        )
+    }
+
+    deployingProfile?.let { profile ->
+        DeployKeyDialog(
+            profile = profile,
+            keys = sshKeys,
+            onDismiss = { deployingProfile = null },
+            onDeploy = { keyId, password ->
+                viewModel.deployKey(profile, keyId, password)
+                deployingProfile = null
             },
         )
     }
@@ -166,6 +189,7 @@ fun ConnectionsScreen(
                             profile = profile,
                             session = session,
                             isConnecting = connectingId == profile.id,
+                            hasKeys = sshKeys.isNotEmpty(),
                             onTap = {
                                 if (session?.status == SessionState.Status.CONNECTED) {
                                     onNavigateToTerminal(profile.id)
@@ -176,6 +200,7 @@ fun ConnectionsScreen(
                             onEdit = { editingProfile = profile },
                             onDelete = { viewModel.deleteConnection(profile.id) },
                             onDisconnect = { viewModel.disconnect(profile.id) },
+                            onDeployKey = { deployingProfile = profile },
                         )
                     }
                 }
@@ -190,10 +215,12 @@ private fun ConnectionListItem(
     profile: ConnectionProfile,
     session: SessionState?,
     isConnecting: Boolean,
+    hasKeys: Boolean,
     onTap: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onDisconnect: () -> Unit,
+    onDeployKey: () -> Unit,
 ) {
     var showMenu by remember { mutableStateOf(false) }
 
@@ -246,6 +273,13 @@ private fun ConnectionListItem(
                     text = { Text("Disconnect") },
                     leadingIcon = { Icon(Icons.Filled.LinkOff, null) },
                     onClick = { showMenu = false; onDisconnect() },
+                )
+            }
+            if (hasKeys) {
+                DropdownMenuItem(
+                    text = { Text("Deploy SSH Key") },
+                    leadingIcon = { Icon(Icons.Filled.VpnKey, null) },
+                    onClick = { showMenu = false; onDeployKey() },
                 )
             }
             DropdownMenuItem(
