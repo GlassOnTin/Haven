@@ -72,6 +72,11 @@ fun TerminalScreen(
             if (activeTab != null) {
                 val focusRequester = remember { FocusRequester() }
 
+                // Request focus so the soft keyboard appears and Terminal receives key events
+                LaunchedEffect(activeTabIndex) {
+                    focusRequester.requestFocus()
+                }
+
                 Box(modifier = Modifier.weight(1f)) {
                     Terminal(
                         terminalEmulator = activeTab.emulator,
