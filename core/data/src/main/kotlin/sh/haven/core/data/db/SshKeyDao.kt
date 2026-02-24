@@ -13,6 +13,9 @@ interface SshKeyDao {
     @Query("SELECT * FROM ssh_keys ORDER BY createdAt DESC")
     fun observeAll(): Flow<List<SshKey>>
 
+    @Query("SELECT * FROM ssh_keys ORDER BY createdAt DESC")
+    suspend fun getAll(): List<SshKey>
+
     @Query("SELECT * FROM ssh_keys WHERE id = :id")
     suspend fun getById(id: String): SshKey?
 

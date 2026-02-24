@@ -77,11 +77,12 @@ class ConnectionsViewModel @Inject constructor(
 
             try {
                 withContext(Dispatchers.IO) {
+                    val authMethod = resolveAuthMethod(profile, password)
                     val config = ConnectionConfig(
                         host = profile.host,
                         port = profile.port,
                         username = profile.username,
-                        authMethod = ConnectionConfig.AuthMethod.Password(password),
+                        authMethod = authMethod,
                     )
                     client.connect(config)
                     sessionManager.openShellForSession(profile.id)
@@ -98,6 +99,42 @@ class ConnectionsViewModel @Inject constructor(
                 _connectingId.value = null
             }
         }
+    }
+
+    /**
+     * Resolve the auth method for a connection profile.
+     * If the profile has an assigned key, use it.
+     * Otherwise if keys exist and password is empty, try the first available key.
+     * Falls back to password auth.
+     */
+    private suspend fun resolveAuthMethod(
+        profile: ConnectionProfile,
+        password: String,
+    ): ConnectionConfig.AuthMethod {
+        // Profile has an explicit key assigned
+        val keyId = profile.keyId
+        if (keyId != null) {
+            val key = sshKeyRepository.getById(keyId)
+            if (key != null) {
+                return ConnectionConfig.AuthMethod.PrivateKey(
+                    keyBytes = key.privateKeyBytes,
+                    passphrase = password,
+                )
+            }
+        }
+
+        // No explicit key but keys are available — try first key when password is empty
+        if (password.isEmpty()) {
+            val keys = sshKeyRepository.getAll()
+            if (keys.isNotEmpty()) {
+                return ConnectionConfig.AuthMethod.PrivateKey(
+                    keyBytes = keys.first().privateKeyBytes,
+                    passphrase = "",
+                )
+            }
+        }
+
+        return ConnectionConfig.AuthMethod.Password(password)
     }
 
     fun disconnect(profileId: String) {

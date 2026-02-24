@@ -12,6 +12,8 @@ class SshKeyRepository @Inject constructor(
 ) {
     fun observeAll(): Flow<List<SshKey>> = sshKeyDao.observeAll()
 
+    suspend fun getAll(): List<SshKey> = sshKeyDao.getAll()
+
     suspend fun getById(id: String): SshKey? = sshKeyDao.getById(id)
 
     suspend fun save(key: SshKey) = sshKeyDao.upsert(key)
