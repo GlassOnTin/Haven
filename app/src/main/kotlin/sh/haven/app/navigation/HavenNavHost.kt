@@ -2,9 +2,7 @@ package sh.haven.app.navigation
 
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.consumeWindowInsets
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
@@ -93,18 +91,15 @@ fun HavenNavHost() {
                     },
                 )
                 Screen.Terminal -> {
-                    // Terminal composable consumes touch events, blocking pager swipe.
-                    // Intercept horizontal drags at Initial pass and forward to pager.
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .pagerSwipeOverride(pagerState, coroutineScope),
-                    ) {
-                        TerminalScreen(navigateToProfileId = pendingTerminalProfileId)
-                        LaunchedEffect(pendingTerminalProfileId) {
-                            if (pendingTerminalProfileId != null) {
-                                pendingTerminalProfileId = null
-                            }
+                    TerminalScreen(
+                        navigateToProfileId = pendingTerminalProfileId,
+                        // Terminal composable consumes touch events, blocking pager swipe.
+                        // Intercept horizontal drags at Initial pass and forward to pager.
+                        terminalModifier = Modifier.pagerSwipeOverride(pagerState, coroutineScope),
+                    )
+                    LaunchedEffect(pendingTerminalProfileId) {
+                        if (pendingTerminalProfileId != null) {
+                            pendingTerminalProfileId = null
                         }
                     }
                 }

@@ -28,6 +28,7 @@ import org.connectbot.terminal.Terminal
 @Composable
 fun TerminalScreen(
     navigateToProfileId: String? = null,
+    terminalModifier: Modifier = Modifier,
     viewModel: TerminalViewModel = hiltViewModel(),
 ) {
     val tabs by viewModel.tabs.collectAsState()
@@ -77,7 +78,7 @@ fun TerminalScreen(
                     focusRequester.requestFocus()
                 }
 
-                Box(modifier = Modifier.weight(1f)) {
+                Box(modifier = Modifier.weight(1f).then(terminalModifier)) {
                     Terminal(
                         terminalEmulator = activeTab.emulator,
                         modifier = Modifier.fillMaxSize(),
