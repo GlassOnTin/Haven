@@ -159,6 +159,67 @@ class TerminalSessionTest {
     }
 
     @Test
+    fun `sendToSsh deduplicates identical back-to-back sends`() {
+        val outputStream = ByteArrayOutputStream()
+        val channel = mockk<ChannelShell>(relaxed = true) {
+            every { inputStream } returns ByteArrayInputStream(ByteArray(0))
+            every { getOutputStream() } returns outputStream
+            every { isConnected } returns true
+        }
+        val client = mockk<SshClient>(relaxed = true)
+
+        val session = TerminalSession(
+            profileId = "test",
+            label = "test@host",
+            channel = channel,
+            client = client,
+            onDataReceived = { _, _, _ -> },
+        )
+
+        val testData = "a".toByteArray()
+        session.sendToSsh(testData)
+        session.sendToSsh(testData) // duplicate — should be dropped
+
+        Thread.sleep(200)
+
+        // Only one 'a' should be written
+        assertArrayEquals(testData, outputStream.toByteArray())
+
+        session.close()
+    }
+
+    @Test
+    fun `sendToSsh allows same data after dedup window`() {
+        val outputStream = ByteArrayOutputStream()
+        val channel = mockk<ChannelShell>(relaxed = true) {
+            every { inputStream } returns ByteArrayInputStream(ByteArray(0))
+            every { getOutputStream() } returns outputStream
+            every { isConnected } returns true
+        }
+        val client = mockk<SshClient>(relaxed = true)
+
+        val session = TerminalSession(
+            profileId = "test",
+            label = "test@host",
+            channel = channel,
+            client = client,
+            onDataReceived = { _, _, _ -> },
+        )
+
+        val testData = "a".toByteArray()
+        session.sendToSsh(testData)
+        Thread.sleep(60) // exceed 50ms dedup window
+        session.sendToSsh(testData) // should NOT be dropped
+
+        Thread.sleep(200)
+
+        // Both 'a's should be written
+        assertArrayEquals("aa".toByteArray(), outputStream.toByteArray())
+
+        session.close()
+    }
+
+    @Test
     fun `close is idempotent`() {
         val channel = mockk<ChannelShell>(relaxed = true) {
             every { inputStream } returns ByteArrayInputStream(ByteArray(0))

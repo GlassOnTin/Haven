@@ -38,6 +38,15 @@ class TerminalSession(
     private var readerThread: Thread? = null
 
     /**
+     * Dedup state for [sendToSsh]. Some Android IMEs fire both commitText and
+     * sendKeyEvent for the same keystroke, which causes the connectbot emulator
+     * to call onKeyboardInput twice. We drop the second identical send if it
+     * arrives within [DEDUP_WINDOW_NS].
+     */
+    private var lastSendData: ByteArray? = null
+    private var lastSendNanos: Long = 0
+
+    /**
      * Start the reader thread that delivers SSH output to [onDataReceived].
      * Call this after all wiring (e.g., emulator setup) is complete.
      */
@@ -69,16 +78,32 @@ class TerminalSession(
      * Forward keyboard input to the remote shell.
      * Safe to call from any thread — writes are dispatched to a background thread
      * to avoid NetworkOnMainThreadException.
+     *
+     * Includes deduplication: the connectbot Terminal composable wires both an
+     * InputConnection (commitText → onTextInput) and an OnKeyListener (sendKeyEvent
+     * → onKeyEvent) on the ImeInputView. Some Android IMEs fire both paths for the
+     * same keystroke, resulting in duplicate onKeyboardInput callbacks. We drop the
+     * second identical send within [DEDUP_WINDOW_NS].
      */
     fun sendToSsh(data: ByteArray) {
         if (closed || !channel.isConnected) {
             Log.d(TAG, "sendToSsh: dropping ${data.size} bytes (closed=$closed connected=${channel.isConnected})")
             return
         }
+        val now = System.nanoTime()
+        if (lastSendData?.contentEquals(data) == true &&
+            (now - lastSendNanos) < DEDUP_WINDOW_NS
+        ) {
+            return
+        }
+        lastSendData = data.copyOf()
+        lastSendNanos = now
+
+        val copy = data.copyOf()
         writeExecutor.execute {
             if (closed || !channel.isConnected) return@execute
             try {
-                sshOutput.write(data)
+                sshOutput.write(copy)
                 sshOutput.flush()
             } catch (e: Exception) {
                 Log.e(TAG, "sendToSsh: write failed", e)
@@ -102,5 +127,10 @@ class TerminalSession(
         writeExecutor.shutdown()
         try { channel.disconnect() } catch (_: Exception) {}
         readerThread?.interrupt()
+    }
+
+    companion object {
+        /** 50 ms — longer than back-to-back handler.post but shorter than key repeat. */
+        private const val DEDUP_WINDOW_NS = 50_000_000L
     }
 }
