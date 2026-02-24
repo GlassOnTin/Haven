@@ -1,8 +1,13 @@
 package sh.haven.app.navigation
 
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -17,12 +22,17 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import sh.haven.feature.connections.ConnectionsScreen
 import sh.haven.feature.keys.KeysScreen
 import sh.haven.feature.settings.SettingsScreen
 import sh.haven.feature.sftp.SftpScreen
 import sh.haven.feature.terminal.TerminalScreen
+import kotlin.math.abs
 
 @Composable
 fun HavenNavHost() {
@@ -67,10 +77,18 @@ fun HavenNavHost() {
                     },
                 )
                 Screen.Terminal -> {
-                    TerminalScreen(navigateToProfileId = pendingTerminalProfileId)
-                    LaunchedEffect(pendingTerminalProfileId) {
-                        if (pendingTerminalProfileId != null) {
-                            pendingTerminalProfileId = null
+                    // Terminal composable consumes touch events, blocking pager swipe.
+                    // Intercept horizontal drags at Initial pass and forward to pager.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .pagerSwipeOverride(pagerState, coroutineScope),
+                    ) {
+                        TerminalScreen(navigateToProfileId = pendingTerminalProfileId)
+                        LaunchedEffect(pendingTerminalProfileId) {
+                            if (pendingTerminalProfileId != null) {
+                                pendingTerminalProfileId = null
+                            }
                         }
                     }
                 }
@@ -78,6 +96,52 @@ fun HavenNavHost() {
                 Screen.Keys -> KeysScreen()
                 Screen.Settings -> SettingsScreen()
             }
+        }
+    }
+}
+
+/**
+ * Intercepts horizontal drag gestures at [PointerEventPass.Initial] (before children)
+ * and forwards them to the [PagerState]. Vertical drags and taps pass through to children.
+ */
+private fun Modifier.pagerSwipeOverride(
+    pagerState: PagerState,
+    scope: CoroutineScope,
+): Modifier = pointerInput(pagerState) {
+    val touchSlopPx = viewConfiguration.touchSlop
+    awaitEachGesture {
+        awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+        var totalX = 0f
+        var totalY = 0f
+        var decided = false
+        var isHorizontal = false
+
+        do {
+            val event = awaitPointerEvent(PointerEventPass.Initial)
+            val change = event.changes.firstOrNull() ?: break
+            val delta = change.positionChange()
+            totalX += delta.x
+            totalY += delta.y
+
+            if (!decided && totalX * totalX + totalY * totalY > touchSlopPx * touchSlopPx) {
+                decided = true
+                isHorizontal = abs(totalX) > abs(totalY)
+            }
+
+            if (isHorizontal) {
+                change.consume()
+                pagerState.dispatchRawDelta(-delta.x)
+            }
+        } while (change.pressed)
+
+        if (isHorizontal) {
+            val threshold = size.width / 4
+            val target = when {
+                totalX < -threshold -> pagerState.currentPage + 1
+                totalX > threshold -> pagerState.currentPage - 1
+                else -> pagerState.currentPage
+            }.coerceIn(0, pagerState.pageCount - 1)
+            scope.launch { pagerState.animateScrollToPage(target) }
         }
     }
 }
