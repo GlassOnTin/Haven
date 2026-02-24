@@ -31,6 +31,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -162,13 +163,29 @@ fun ConnectionsScreen(
             OutlinedTextField(
                 value = quickConnectText,
                 onValueChange = { quickConnectText = it },
-                placeholder = { Text("user@host:port") },
+                placeholder = { Text("Quick connect: user@host:port") },
                 singleLine = true,
+                trailingIcon = {
+                    IconButton(
+                        onClick = {
+                            val profile = viewModel.parseQuickConnect(quickConnectText)
+                            if (profile != null) {
+                                viewModel.saveConnection(profile)
+                                connectingProfile = profile
+                                quickConnectText = ""
+                            }
+                        },
+                        enabled = quickConnectText.isNotBlank(),
+                    ) {
+                        Icon(Icons.Filled.Cable, contentDescription = "Connect")
+                    }
+                },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
                 keyboardActions = KeyboardActions(
                     onGo = {
                         val profile = viewModel.parseQuickConnect(quickConnectText)
                         if (profile != null) {
+                            viewModel.saveConnection(profile)
                             connectingProfile = profile
                             quickConnectText = ""
                         }
