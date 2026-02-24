@@ -168,6 +168,7 @@ class SftpViewModel @Inject constructor(
     fun uploadFile(fileName: String, sourceUri: Uri) {
         val profileId = _activeProfileId.value ?: return
         val destPath = _currentPath.value.trimEnd('/') + "/" + fileName
+        Log.d(TAG, "Upload: '$fileName' -> '$destPath' (source: $sourceUri)")
         viewModelScope.launch {
             try {
                 _loading.value = true
@@ -178,6 +179,7 @@ class SftpViewModel @Inject constructor(
                     inputStream.use { input ->
                         channel.put(input, destPath)
                     }
+                    Log.d(TAG, "Upload complete: '$destPath'")
                 }
                 _message.value = "Uploaded $fileName"
                 refresh()

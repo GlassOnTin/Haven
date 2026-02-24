@@ -99,11 +99,16 @@ fun SftpScreen(
     }
 
     // File picker for upload
+    val context = LocalContext.current
     val uploadLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri ->
         if (uri != null) {
-            val fileName = uri.lastPathSegment?.substringAfterLast('/') ?: "upload"
+            // Query the actual display name from the content resolver
+            val fileName = context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (cursor.moveToFirst() && nameIndex >= 0) cursor.getString(nameIndex) else null
+            } ?: uri.lastPathSegment?.substringAfterLast('/') ?: "upload"
             viewModel.uploadFile(fileName, uri)
         }
     }
