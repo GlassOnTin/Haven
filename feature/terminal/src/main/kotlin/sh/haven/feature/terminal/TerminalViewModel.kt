@@ -77,6 +77,7 @@ class TerminalViewModel @Inject constructor(
                 defaultForeground = Color.White,
                 defaultBackground = Color(0xFF1A1A2E),
                 onKeyboardInput = { data -> termSession.sendToSsh(data) },
+                onResize = { dims -> termSession.resize(dims.columns, dims.rows) },
             )
 
             // Start reader thread now that emulator is wired
