@@ -2,23 +2,22 @@ package sh.haven.app.navigation
 
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.navigation.NavDestination.Companion.hierarchy
-import androidx.navigation.NavGraph.Companion.findStartDestination
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.currentBackStackEntryAsState
-import androidx.navigation.compose.rememberNavController
+import kotlinx.coroutines.launch
 import sh.haven.feature.connections.ConnectionsScreen
 import sh.haven.feature.keys.KeysScreen
 import sh.haven.feature.settings.SettingsScreen
@@ -27,9 +26,9 @@ import sh.haven.feature.terminal.TerminalScreen
 
 @Composable
 fun HavenNavHost() {
-    val navController = rememberNavController()
-    val navBackStackEntry by navController.currentBackStackEntryAsState()
-    val currentDestination = navBackStackEntry?.destination
+    val screens = Screen.entries
+    val pagerState = rememberPagerState { screens.size }
+    val coroutineScope = rememberCoroutineScope()
 
     // Profile ID to focus when navigating to terminal
     var pendingTerminalProfileId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -37,20 +36,14 @@ fun HavenNavHost() {
     Scaffold(
         bottomBar = {
             NavigationBar {
-                Screen.entries.forEach { screen ->
+                screens.forEachIndexed { index, screen ->
                     NavigationBarItem(
                         icon = { Icon(screen.icon, contentDescription = screen.label) },
                         label = { Text(screen.label) },
-                        selected = currentDestination?.hierarchy?.any {
-                            it.route == screen.route
-                        } == true,
+                        selected = pagerState.currentPage == index,
                         onClick = {
-                            navController.navigate(screen.route) {
-                                popUpTo(navController.graph.findStartDestination().id) {
-                                    saveState = true
-                                }
-                                launchSingleTop = true
-                                restoreState = true
+                            coroutineScope.launch {
+                                pagerState.animateScrollToPage(index)
                             }
                         }
                     )
@@ -58,35 +51,33 @@ fun HavenNavHost() {
             }
         }
     ) { innerPadding ->
-        NavHost(
-            navController = navController,
-            startDestination = Screen.Connections.route,
+        HorizontalPager(
+            state = pagerState,
             modifier = Modifier
                 .padding(innerPadding)
-                .consumeWindowInsets(innerPadding)
-        ) {
-            composable(Screen.Connections.route) {
-                ConnectionsScreen(
+                .consumeWindowInsets(innerPadding),
+        ) { page ->
+            when (screens[page]) {
+                Screen.Connections -> ConnectionsScreen(
                     onNavigateToTerminal = { profileId ->
                         pendingTerminalProfileId = profileId
-                        navController.navigate(Screen.Terminal.route) {
-                            popUpTo(navController.graph.findStartDestination().id) {
-                                saveState = true
-                            }
-                            launchSingleTop = true
-                            restoreState = true
+                        coroutineScope.launch {
+                            pagerState.animateScrollToPage(Screen.Terminal.ordinal)
                         }
                     },
                 )
+                Screen.Terminal -> {
+                    TerminalScreen(navigateToProfileId = pendingTerminalProfileId)
+                    LaunchedEffect(pendingTerminalProfileId) {
+                        if (pendingTerminalProfileId != null) {
+                            pendingTerminalProfileId = null
+                        }
+                    }
+                }
+                Screen.Sftp -> SftpScreen()
+                Screen.Keys -> KeysScreen()
+                Screen.Settings -> SettingsScreen()
             }
-            composable(Screen.Terminal.route) {
-                val profileId = pendingTerminalProfileId
-                pendingTerminalProfileId = null
-                TerminalScreen(navigateToProfileId = profileId)
-            }
-            composable(Screen.Sftp.route) { SftpScreen() }
-            composable(Screen.Keys.route) { KeysScreen() }
-            composable(Screen.Settings.route) { SettingsScreen() }
         }
     }
 }
