@@ -26,6 +26,8 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material3.CircularProgressIndicator
@@ -73,6 +75,7 @@ fun SftpScreen(
     val currentPath by viewModel.currentPath.collectAsState()
     val entries by viewModel.entries.collectAsState()
     val sortMode by viewModel.sortMode.collectAsState()
+    val showHidden by viewModel.showHidden.collectAsState()
     val loading by viewModel.loading.collectAsState()
     val error by viewModel.error.collectAsState()
     val message by viewModel.message.collectAsState()
@@ -139,6 +142,12 @@ fun SftpScreen(
                 },
                 actions = {
                     if (activeProfileId != null) {
+                        IconButton(onClick = { viewModel.toggleShowHidden() }) {
+                            Icon(
+                                if (showHidden) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
+                                contentDescription = if (showHidden) "Hide hidden files" else "Show hidden files",
+                            )
+                        }
                         Box {
                             IconButton(onClick = { showSortMenu = true }) {
                                 Icon(Icons.AutoMirrored.Filled.Sort, "Sort")

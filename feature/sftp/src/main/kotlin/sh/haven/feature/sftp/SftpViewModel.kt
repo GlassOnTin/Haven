@@ -52,11 +52,15 @@ class SftpViewModel @Inject constructor(
     private val _currentPath = MutableStateFlow("/")
     val currentPath: StateFlow<String> = _currentPath.asStateFlow()
 
+    private val _allEntries = MutableStateFlow<List<SftpEntry>>(emptyList())
     private val _entries = MutableStateFlow<List<SftpEntry>>(emptyList())
     val entries: StateFlow<List<SftpEntry>> = _entries.asStateFlow()
 
     private val _sortMode = MutableStateFlow(SortMode.NAME_ASC)
     val sortMode: StateFlow<SortMode> = _sortMode.asStateFlow()
+
+    private val _showHidden = MutableStateFlow(false)
+    val showHidden: StateFlow<Boolean> = _showHidden.asStateFlow()
 
     private val _loading = MutableStateFlow(false)
     val loading: StateFlow<Boolean> = _loading.asStateFlow()
@@ -99,6 +103,7 @@ class SftpViewModel @Inject constructor(
         _activeProfileId.value = profileId
         sftpChannel = null
         _currentPath.value = "/"
+        _allEntries.value = emptyList()
         _entries.value = emptyList()
         openSftpAndList(profileId, "/")
     }
@@ -118,7 +123,18 @@ class SftpViewModel @Inject constructor(
 
     fun setSortMode(mode: SortMode) {
         _sortMode.value = mode
-        _entries.value = sortEntries(_entries.value, mode)
+        _allEntries.value = sortEntries(_allEntries.value, mode)
+        applyFilter()
+    }
+
+    fun toggleShowHidden() {
+        _showHidden.value = !_showHidden.value
+        applyFilter()
+    }
+
+    private fun applyFilter() {
+        val all = _allEntries.value
+        _entries.value = if (_showHidden.value) all else all.filter { !it.name.startsWith(".") }
     }
 
     fun refresh() {
@@ -259,7 +275,8 @@ class SftpViewModel @Inject constructor(
             }
             ChannelSftp.LsEntrySelector.CONTINUE
         }
-        _entries.value = sortEntries(results, _sortMode.value)
+        _allEntries.value = sortEntries(results, _sortMode.value)
+        applyFilter()
     }
 
     private fun getOrOpenChannel(profileId: String): ChannelSftp? {
