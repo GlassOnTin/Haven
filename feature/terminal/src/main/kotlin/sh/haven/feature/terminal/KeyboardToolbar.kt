@@ -26,9 +26,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import org.connectbot.terminal.TerminalEmulator
 
 // VT100/xterm escape sequences for special keys
 private const val ESC = "\u001b"
@@ -49,6 +49,8 @@ fun KeyboardToolbar(
     var shiftActive by remember { mutableStateOf(false) }
     var ctrlActive by remember { mutableStateOf(false) }
     var altActive by remember { mutableStateOf(false) }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    var keyboardVisible by remember { mutableStateOf(true) }
 
     Surface(
         tonalElevation = 2.dp,
@@ -60,6 +62,18 @@ fun KeyboardToolbar(
                 .padding(horizontal = 4.dp, vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // Toggle keyboard
+            ToolbarIconButton(Icons.Filled.Keyboard, "Toggle keyboard") {
+                if (keyboardVisible) {
+                    keyboardController?.hide()
+                    keyboardVisible = false
+                } else {
+                    focusRequester.requestFocus()
+                    keyboardController?.show()
+                    keyboardVisible = true
+                }
+            }
+
             // Esc
             ToolbarTextButton("Esc") { onSendBytes(KEY_ESC) }
 
@@ -105,11 +119,6 @@ fun KeyboardToolbar(
             ToolbarTextButton("~") { sendChar('~', ctrlActive, altActive, onSendBytes); ctrlActive = false; altActive = false }
             ToolbarTextButton("/") { sendChar('/', ctrlActive, altActive, onSendBytes); ctrlActive = false; altActive = false }
             ToolbarTextButton("-") { sendChar('-', ctrlActive, altActive, onSendBytes); ctrlActive = false; altActive = false }
-
-            // Show/hide keyboard
-            ToolbarIconButton(Icons.Filled.Keyboard, "Toggle keyboard") {
-                focusRequester.requestFocus()
-            }
         }
     }
 }
