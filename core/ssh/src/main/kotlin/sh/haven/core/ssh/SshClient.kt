@@ -1,6 +1,7 @@
 package sh.haven.core.ssh
 
 import com.jcraft.jsch.ChannelExec
+import com.jcraft.jsch.ChannelSftp
 import com.jcraft.jsch.ChannelShell
 import com.jcraft.jsch.JSch
 import com.jcraft.jsch.Session
@@ -79,6 +80,17 @@ class SshClient : Closeable {
      */
     fun resizeShell(channel: ChannelShell, cols: Int, rows: Int) {
         channel.setPtySize(cols, rows, 0, 0)
+    }
+
+    /**
+     * Open an SFTP channel on the current SSH session.
+     * Must be called after [connect].
+     */
+    fun openSftpChannel(): ChannelSftp {
+        val sess = session ?: throw IllegalStateException("Not connected")
+        val channel = sess.openChannel("sftp") as ChannelSftp
+        channel.connect()
+        return channel
     }
 
     /**

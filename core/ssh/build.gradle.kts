@@ -25,7 +25,7 @@ android {
 }
 
 dependencies {
-    implementation(libs.jsch)
+    api(libs.jsch)
     implementation(libs.bouncycastle)
     implementation(libs.coroutines.core)
     implementation(libs.coroutines.android)

@@ -1,6 +1,7 @@
 package sh.haven.core.ssh
 
 import android.util.Log
+import com.jcraft.jsch.ChannelSftp
 import com.jcraft.jsch.ChannelShell
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,6 +27,7 @@ class SshSessionManager @Inject constructor() {
         val client: SshClient,
         val shellChannel: ChannelShell? = null,
         val terminalSession: TerminalSession? = null,
+        val sftpChannel: ChannelSftp? = null,
     ) {
         enum class Status { CONNECTING, CONNECTED, DISCONNECTED, ERROR }
     }
@@ -115,6 +117,23 @@ class SshSessionManager @Inject constructor() {
             session.terminalSession == null
     }
 
+    /**
+     * Open an SFTP channel on the SSH session and store it in the session state.
+     * Returns the channel, or null if the session isn't connected.
+     */
+    fun openSftpForSession(profileId: String): ChannelSftp? {
+        val session = _sessions.value[profileId] ?: return null
+        if (session.status != SessionState.Status.CONNECTED) return null
+        // Reuse existing channel if still connected
+        session.sftpChannel?.let { if (it.isConnected) return it }
+        val channel = session.client.openSftpChannel()
+        _sessions.update { map ->
+            val existing = map[profileId] ?: return@update map
+            map + (profileId to existing.copy(sftpChannel = channel))
+        }
+        return channel
+    }
+
     fun attachTerminalSession(profileId: String, terminalSession: TerminalSession) {
         _sessions.update { map ->
             val existing = map[profileId] ?: return@update map
@@ -141,6 +160,13 @@ class SshSessionManager @Inject constructor() {
     private fun tearDown(session: SessionState) {
         try { session.terminalSession?.close() } catch (e: Exception) {
             Log.e(TAG, "tearDown: terminalSession.close() failed", e)
+        }
+        try {
+            if (session.sftpChannel?.isConnected == true) {
+                session.sftpChannel.disconnect()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "tearDown: sftpChannel.disconnect() failed", e)
         }
         try {
             if (session.shellChannel?.isConnected == true) {
