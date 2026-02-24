@@ -1,17 +1,12 @@
 package sh.haven.feature.terminal
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
@@ -24,7 +19,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -51,10 +45,6 @@ fun TerminalScreen(
             viewModel.selectTabByProfileId(navigateToProfileId)
         }
     }
-
-    val density = LocalDensity.current
-    val imeBottom = WindowInsets.ime.getBottom(density)
-    val isImeVisible = imeBottom > 0
 
     Column(modifier = Modifier.fillMaxSize().imePadding()) {
         if (tabs.isEmpty()) {
@@ -96,25 +86,12 @@ fun TerminalScreen(
                         foregroundColor = Color(0xFF00E676),
                         focusRequester = focusRequester,
                     )
-
-                    // Tap-to-focus overlay when keyboard is hidden
-                    if (!isImeVisible) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null,
-                                ) {
-                                    focusRequester.requestFocus()
-                                }
-                        )
-                    }
                 }
 
                 // Keyboard toolbar
                 KeyboardToolbar(
                     onSendBytes = { bytes -> activeTab.terminalSession.sendToSsh(bytes) },
+                    focusRequester = focusRequester,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }

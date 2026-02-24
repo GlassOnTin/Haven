@@ -8,6 +8,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.FilledTonalButton
@@ -23,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -32,6 +34,7 @@ import org.connectbot.terminal.TerminalEmulator
 private const val ESC = "\u001b"
 private val KEY_ESC = byteArrayOf(0x1b)
 private val KEY_TAB = byteArrayOf(0x09)
+private val KEY_SHIFT_TAB = "$ESC[Z".toByteArray() // CSI Z = Shift+Tab (backtab)
 private val KEY_UP = "$ESC[A".toByteArray()
 private val KEY_DOWN = "$ESC[B".toByteArray()
 private val KEY_RIGHT = "$ESC[C".toByteArray()
@@ -40,8 +43,10 @@ private val KEY_LEFT = "$ESC[D".toByteArray()
 @Composable
 fun KeyboardToolbar(
     onSendBytes: (ByteArray) -> Unit,
+    focusRequester: FocusRequester,
     modifier: Modifier = Modifier,
 ) {
+    var shiftActive by remember { mutableStateOf(false) }
     var ctrlActive by remember { mutableStateOf(false) }
     var altActive by remember { mutableStateOf(false) }
 
@@ -58,8 +63,22 @@ fun KeyboardToolbar(
             // Esc
             ToolbarTextButton("Esc") { onSendBytes(KEY_ESC) }
 
-            // Tab
-            ToolbarTextButton("Tab") { onSendBytes(KEY_TAB) }
+            // Tab (sends Shift+Tab / backtab when shift is active)
+            ToolbarTextButton("Tab") {
+                if (shiftActive) {
+                    onSendBytes(KEY_SHIFT_TAB)
+                    shiftActive = false
+                } else {
+                    onSendBytes(KEY_TAB)
+                }
+            }
+
+            // Shift (sticky toggle)
+            ToolbarToggleButton(
+                label = "Shift",
+                active = shiftActive,
+                onClick = { shiftActive = !shiftActive },
+            )
 
             // Ctrl (sticky toggle)
             ToolbarToggleButton(
@@ -86,6 +105,11 @@ fun KeyboardToolbar(
             ToolbarTextButton("~") { sendChar('~', ctrlActive, altActive, onSendBytes); ctrlActive = false; altActive = false }
             ToolbarTextButton("/") { sendChar('/', ctrlActive, altActive, onSendBytes); ctrlActive = false; altActive = false }
             ToolbarTextButton("-") { sendChar('-', ctrlActive, altActive, onSendBytes); ctrlActive = false; altActive = false }
+
+            // Show/hide keyboard
+            ToolbarIconButton(Icons.Filled.Keyboard, "Toggle keyboard") {
+                focusRequester.requestFocus()
+            }
         }
     }
 }
