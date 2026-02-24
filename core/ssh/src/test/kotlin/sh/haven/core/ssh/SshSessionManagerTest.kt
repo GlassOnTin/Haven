@@ -79,9 +79,13 @@ class SshSessionManagerTest {
         manager.registerSession("id1", "Server", client)
         manager.removeSession("id1")
 
-        verify { client.disconnect() }
+        // State is cleared synchronously
         assertNull(manager.getSession("id1"))
         assertFalse(manager.hasActiveSessions)
+
+        // Teardown dispatches to background executor
+        Thread.sleep(200)
+        verify { client.disconnect() }
     }
 
     @Test
@@ -99,9 +103,13 @@ class SshSessionManagerTest {
 
         manager.disconnectAll()
 
+        // State is cleared synchronously
+        assertTrue(manager.sessions.value.isEmpty())
+
+        // Teardown dispatches to background executor
+        Thread.sleep(200)
         verify { c1.disconnect() }
         verify { c2.disconnect() }
-        assertTrue(manager.sessions.value.isEmpty())
     }
 
     @Test
@@ -153,6 +161,8 @@ class SshSessionManagerTest {
         manager.attachTerminalSession("id1", terminalSession)
         manager.removeSession("id1")
 
+        // Teardown dispatches to background executor
+        Thread.sleep(200)
         verify { terminalSession.close() }
         verify { client.disconnect() }
     }
@@ -168,9 +178,13 @@ class SshSessionManagerTest {
 
         manager.disconnectAll()
 
+        // State is cleared synchronously
+        assertTrue(manager.sessions.value.isEmpty())
+
+        // Teardown dispatches to background executor
+        Thread.sleep(200)
         verify { t1.close() }
         verify { c1.disconnect() }
         verify { c2.disconnect() }
-        assertTrue(manager.sessions.value.isEmpty())
     }
 }

@@ -35,6 +35,9 @@ class TerminalSessionTest {
         val testData = "ls -la\n".toByteArray()
         session.sendToSsh(testData)
 
+        // sendToSsh dispatches to a background executor
+        Thread.sleep(200)
+
         assertArrayEquals(testData, outputStream.toByteArray())
 
         session.close()
@@ -59,6 +62,10 @@ class TerminalSessionTest {
         )
 
         session.sendToSsh("data".toByteArray())
+
+        // sendToSsh guards on !channel.isConnected before submitting to executor
+        Thread.sleep(200)
+
         assertEquals(0, outputStream.size())
 
         session.close()
@@ -121,6 +128,10 @@ class TerminalSessionTest {
         )
 
         session.resize(120, 40)
+
+        // resize dispatches to a background executor
+        Thread.sleep(200)
+
         verify { client.resizeShell(channel, 120, 40) }
 
         session.close()
