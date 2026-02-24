@@ -3,9 +3,13 @@ package sh.haven.feature.terminal
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredHeight
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.Tab
@@ -14,11 +18,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -46,7 +55,11 @@ fun TerminalScreen(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    val density = LocalDensity.current
+    val imeBottom = WindowInsets.ime.getBottom(density)
+    val isImeVisible = imeBottom > 0
+
+    Column(modifier = Modifier.fillMaxSize().imePadding()) {
         if (tabs.isEmpty()) {
             EmptyTerminalState()
         } else {
@@ -71,16 +84,31 @@ fun TerminalScreen(
             val activeTab = tabs.getOrNull(activeTabIndex)
             if (activeTab != null) {
                 val focusRequester = remember { FocusRequester() }
+                var fullHeightPx by remember { mutableIntStateOf(-1) }
 
                 // Request focus so the soft keyboard appears and Terminal receives key events
                 LaunchedEffect(activeTabIndex) {
                     focusRequester.requestFocus()
                 }
 
-                Box(modifier = Modifier.weight(1f)) {
+                Box(
+                    modifier = Modifier.weight(1f).clipToBounds(),
+                    contentAlignment = Alignment.BottomStart,
+                ) {
                     Terminal(
                         terminalEmulator = activeTab.emulator,
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .then(
+                                if (isImeVisible && fullHeightPx > 0) {
+                                    Modifier.requiredHeight(with(density) { fullHeightPx.toDp() })
+                                } else {
+                                    Modifier.fillMaxSize()
+                                }
+                            )
+                            .onSizeChanged { size ->
+                                if (!isImeVisible) fullHeightPx = size.height
+                            },
                         keyboardEnabled = true,
                         backgroundColor = Color(0xFF1A1A2E),
                         foregroundColor = Color(0xFF00E676),

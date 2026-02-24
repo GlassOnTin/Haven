@@ -1,5 +1,6 @@
 package sh.haven.app.navigation
 
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -60,7 +61,9 @@ fun HavenNavHost() {
         NavHost(
             navController = navController,
             startDestination = Screen.Connections.route,
-            modifier = Modifier.padding(innerPadding)
+            modifier = Modifier
+                .padding(innerPadding)
+                .consumeWindowInsets(innerPadding)
         ) {
             composable(Screen.Connections.route) {
                 ConnectionsScreen(
