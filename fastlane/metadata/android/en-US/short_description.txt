@@ -1,0 +1,1 @@
+Secure SSH terminal and SFTP client for Android

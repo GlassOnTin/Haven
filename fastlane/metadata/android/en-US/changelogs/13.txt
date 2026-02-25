@@ -1,0 +1,4 @@
+- Added biometric unlock for app access
+- Added terminal font size setting (8-32sp)
+- Added theme picker (system, light, dark)
+- Added About dialog with version info and GitHub link

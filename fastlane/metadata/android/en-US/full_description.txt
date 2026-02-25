@@ -1,0 +1,13 @@
+Haven is an open source SSH client for Android with a terminal emulator, SFTP file browser, and SSH key management.
+
+Features:
+- SSH terminal with multi-session tab support
+- SFTP file browser for uploading and downloading files
+- SSH key generation and management (Ed25519, RSA, ECDSA)
+- Biometric app lock (fingerprint or face)
+- Configurable terminal font size
+- Light, dark, and system-default themes
+- Material You dynamic colors on Android 12+
+- No ads, no tracking, no data collection
+
+Haven connects only to servers you configure. All data stays on your device.
