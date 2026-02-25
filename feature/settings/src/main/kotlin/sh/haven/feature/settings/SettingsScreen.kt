@@ -14,24 +14,36 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen() {
+fun SettingsScreen(
+    viewModel: SettingsViewModel = hiltViewModel(),
+) {
+    val biometricEnabled by viewModel.biometricEnabled.collectAsState()
+
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(title = { Text("Settings") })
 
-        SettingsItem(
-            icon = Icons.Filled.Fingerprint,
-            title = "Biometric unlock",
-            subtitle = "Require biometrics to open Haven",
-        )
+        if (viewModel.biometricAvailable) {
+            SettingsToggleItem(
+                icon = Icons.Filled.Fingerprint,
+                title = "Biometric unlock",
+                subtitle = "Require biometrics to open Haven",
+                checked = biometricEnabled,
+                onCheckedChange = viewModel::setBiometricEnabled,
+            )
+        }
         SettingsItem(
             icon = Icons.Filled.Lock,
             title = "sudo auto-fill",
@@ -53,6 +65,29 @@ fun SettingsScreen() {
             subtitle = "v0.1.0 — Open source SSH client",
         )
     }
+}
+
+@Composable
+private fun SettingsToggleItem(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    ListItem(
+        headlineContent = { Text(title) },
+        supportingContent = { Text(subtitle) },
+        leadingContent = {
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+        },
+        trailingContent = {
+            Switch(checked = checked, onCheckedChange = onCheckedChange)
+        },
+        modifier = Modifier
+            .clickable { onCheckedChange(!checked) }
+            .padding(horizontal = 8.dp),
+    )
 }
 
 @Composable

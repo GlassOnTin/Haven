@@ -91,8 +91,10 @@ dependencies {
     implementation(libs.compose.ui.tooling.preview)
 
     implementation(libs.core.ktx)
+    implementation(libs.appcompat)
     implementation(libs.activity.compose)
     implementation(libs.lifecycle.runtime)
+    implementation(libs.biometric)
     implementation(libs.navigation.compose)
 
     implementation(libs.hilt.android)
