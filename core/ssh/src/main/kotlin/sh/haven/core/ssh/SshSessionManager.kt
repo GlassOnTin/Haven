@@ -30,6 +30,7 @@ class SshSessionManager @Inject constructor() {
         val sftpChannel: ChannelSftp? = null,
         val connectionConfig: ConnectionConfig? = null,
         val sessionManager: SessionManager = SessionManager.NONE,
+        val chosenSessionName: String? = null,
     ) {
         enum class Status { CONNECTING, CONNECTED, RECONNECTING, DISCONNECTED, ERROR }
     }
@@ -242,12 +243,21 @@ class SshSessionManager @Inject constructor() {
         }
     }
 
+    fun setChosenSessionName(profileId: String, name: String) {
+        _sessions.update { map ->
+            val existing = map[profileId] ?: return@update map
+            map + (profileId to existing.copy(chosenSessionName = name))
+        }
+    }
+
     /**
      * Build the session manager command string for a given profile, or null if none.
+     * Uses the user-chosen session name if set, otherwise a deterministic name.
      */
     private fun buildSessionManagerCommand(profileId: String, manager: SessionManager): String? {
         val commandTemplate = manager.command ?: return null
-        val sessionName = "haven-${profileId.take(8)}"
+        val sessionName = _sessions.value[profileId]?.chosenSessionName
+            ?: "haven-${profileId.take(8)}"
         return commandTemplate(sessionName)
     }
 

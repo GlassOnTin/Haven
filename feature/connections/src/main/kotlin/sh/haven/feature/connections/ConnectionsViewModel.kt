@@ -32,7 +32,7 @@ import javax.inject.Inject
 class ConnectionsViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context,
     private val repository: ConnectionRepository,
-    private val sessionManager: SshSessionManager,
+    private val sshSessionManager: SshSessionManager,
     private val sshKeyRepository: SshKeyRepository,
     private val preferencesRepository: UserPreferencesRepository,
 ) : ViewModel() {
@@ -43,7 +43,7 @@ class ConnectionsViewModel @Inject constructor(
     val sshKeys: StateFlow<List<SshKey>> = sshKeyRepository.observeAll()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val sessions: StateFlow<Map<String, SshSessionManager.SessionState>> = sessionManager.sessions
+    val sessions: StateFlow<Map<String, SshSessionManager.SessionState>> = sshSessionManager.sessions
 
     private val _connectingId = MutableStateFlow<String?>(null)
     val connectingId: StateFlow<String?> = _connectingId.asStateFlow()
@@ -54,6 +54,16 @@ class ConnectionsViewModel @Inject constructor(
     /** Emitted once after a successful connect to trigger navigation to terminal. */
     private val _navigateToTerminal = MutableStateFlow<String?>(null)
     val navigateToTerminal: StateFlow<String?> = _navigateToTerminal.asStateFlow()
+
+    /** When non-null, the UI should show a session picker dialog. */
+    data class SessionSelection(
+        val profileId: String,
+        val managerLabel: String,
+        val sessionNames: List<String>,
+    )
+
+    private val _sessionSelection = MutableStateFlow<SessionSelection?>(null)
+    val sessionSelection: StateFlow<SessionSelection?> = _sessionSelection.asStateFlow()
 
     fun onNavigated() {
         _navigateToTerminal.value = null
@@ -67,7 +77,7 @@ class ConnectionsViewModel @Inject constructor(
 
     fun deleteConnection(id: String) {
         viewModelScope.launch {
-            sessionManager.removeSession(id)
+            sshSessionManager.removeSession(id)
             repository.delete(id)
         }
     }
@@ -78,10 +88,10 @@ class ConnectionsViewModel @Inject constructor(
             _error.value = null
 
             val client = SshClient()
-            sessionManager.registerSession(profile.id, profile.label, client)
+            sshSessionManager.registerSession(profile.id, profile.label, client)
 
             try {
-                withContext(Dispatchers.IO) {
+                val sshSessionMgr = withContext(Dispatchers.IO) {
                     val authMethod = resolveAuthMethod(profile, password)
                     val config = ConnectionConfig(
                         host = profile.host,
@@ -92,21 +102,83 @@ class ConnectionsViewModel @Inject constructor(
                     client.connect(config)
                     val prefSessionMgr = preferencesRepository.sessionManager.first()
                     val sshSessionMgr = prefSessionMgr.toSshSessionManager()
-                    sessionManager.storeConnectionConfig(profile.id, config, sshSessionMgr)
-                    sessionManager.openShellForSession(profile.id)
+                    sshSessionManager.storeConnectionConfig(profile.id, config, sshSessionMgr)
+                    sshSessionMgr
                 }
-                sessionManager.updateStatus(profile.id, SshSessionManager.SessionState.Status.CONNECTED)
-                repository.markConnected(profile.id)
-                startForegroundServiceIfNeeded()
-                _navigateToTerminal.value = profile.id
+
+                // If session manager supports listing, check for existing sessions
+                val listCmd = sshSessionMgr.listCommand
+                if (listCmd != null) {
+                    val existingSessions = withContext(Dispatchers.IO) {
+                        try {
+                            val result = client.execCommand(listCmd)
+                            if (result.exitStatus == 0) {
+                                SessionManager.parseSessionList(sshSessionMgr, result.stdout)
+                            } else emptyList()
+                        } catch (_: Exception) {
+                            emptyList()
+                        }
+                    }
+                    if (existingSessions.isNotEmpty()) {
+                        _sessionSelection.value = SessionSelection(
+                            profileId = profile.id,
+                            managerLabel = sshSessionMgr.label,
+                            sessionNames = existingSessions,
+                        )
+                        _connectingId.value = null
+                        return@launch // UI will call onSessionSelected() to continue
+                    }
+                }
+
+                // No existing sessions or no session manager — proceed directly
+                finishConnect(profile.id)
             } catch (e: Exception) {
-                sessionManager.updateStatus(profile.id, SshSessionManager.SessionState.Status.ERROR)
+                sshSessionManager.updateStatus(profile.id, SshSessionManager.SessionState.Status.ERROR)
                 _error.value = e.message ?: "Connection failed"
-                sessionManager.removeSession(profile.id)
+                sshSessionManager.removeSession(profile.id)
             } finally {
                 _connectingId.value = null
             }
         }
+    }
+
+    /**
+     * Called from the session picker dialog when user selects a session.
+     * @param sessionName The name to attach to, or null to create a new session.
+     */
+    fun onSessionSelected(profileId: String, sessionName: String?) {
+        _sessionSelection.value = null
+        viewModelScope.launch {
+            _connectingId.value = profileId
+            try {
+                if (sessionName != null) {
+                    sshSessionManager.setChosenSessionName(profileId, sessionName)
+                }
+                finishConnect(profileId)
+            } catch (e: Exception) {
+                sshSessionManager.updateStatus(profileId, SshSessionManager.SessionState.Status.ERROR)
+                _error.value = e.message ?: "Connection failed"
+                sshSessionManager.removeSession(profileId)
+            } finally {
+                _connectingId.value = null
+            }
+        }
+    }
+
+    fun dismissSessionPicker() {
+        val sel = _sessionSelection.value ?: return
+        _sessionSelection.value = null
+        sshSessionManager.removeSession(sel.profileId)
+    }
+
+    private suspend fun finishConnect(profileId: String) {
+        withContext(Dispatchers.IO) {
+            sshSessionManager.openShellForSession(profileId)
+        }
+        sshSessionManager.updateStatus(profileId, SshSessionManager.SessionState.Status.CONNECTED)
+        repository.markConnected(profileId)
+        startForegroundServiceIfNeeded()
+        _navigateToTerminal.value = profileId
     }
 
     /**
@@ -176,7 +248,7 @@ class ConnectionsViewModel @Inject constructor(
     }
 
     fun disconnect(profileId: String) {
-        sessionManager.removeSession(profileId)
+        sshSessionManager.removeSession(profileId)
     }
 
     fun dismissError() {

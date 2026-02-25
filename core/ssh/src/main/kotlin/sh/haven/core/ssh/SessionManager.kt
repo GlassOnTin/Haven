@@ -5,11 +5,42 @@ package sh.haven.core.ssh
  * @param label Display name for logging.
  * @param command Template that produces an attach-or-create shell command given a session name,
  *                or null for no session manager.
+ * @param listCommand Shell command to list existing sessions, or null if not applicable.
  */
-enum class SessionManager(val label: String, val command: ((String) -> String)?) {
-    NONE("None", null),
-    TMUX("tmux", { name -> "tmux new-session -A -s $name" }),
-    ZELLIJ("zellij", { name -> "zellij attach $name --create" }),
-    SCREEN("screen", { name -> "screen -dRR $name" }),
-    BYOBU("byobu", { name -> "byobu new-session -A -s $name" }),
+enum class SessionManager(
+    val label: String,
+    val command: ((String) -> String)?,
+    val listCommand: String?,
+) {
+    NONE("None", null, null),
+    TMUX("tmux", { name -> "tmux new-session -A -s $name" }, "tmux ls -F '#{session_name}' 2>/dev/null"),
+    ZELLIJ("zellij", { name -> "zellij attach $name --create" }, "zellij ls 2>/dev/null"),
+    SCREEN("screen", { name -> "screen -dRR $name" }, "screen -ls 2>/dev/null"),
+    BYOBU("byobu", { name -> "byobu new-session -A -s $name" }, "byobu ls -F '#{session_name}' 2>/dev/null");
+
+    companion object {
+        /**
+         * Parse session list output into session names.
+         * Returns empty list if output is blank or unparseable.
+         */
+        fun parseSessionList(manager: SessionManager, output: String): List<String> {
+            if (output.isBlank()) return emptyList()
+            return when (manager) {
+                NONE -> emptyList()
+                TMUX, BYOBU -> output.lines().filter { it.isNotBlank() }
+                ZELLIJ -> output.lines()
+                    .filter { it.isNotBlank() }
+                    .map { it.trim().split(Regex("\\s+")).first() }
+                    .filter { it.isNotBlank() && !it.startsWith("No ") }
+                SCREEN -> output.lines()
+                    .map { it.trim() }
+                    .filter { it.contains(".") && (it.contains("Detached") || it.contains("Attached")) }
+                    .mapNotNull { line ->
+                        val firstPart = line.split(Regex("\\s+")).firstOrNull() ?: return@mapNotNull null
+                        val dotIdx = firstPart.indexOf('.')
+                        if (dotIdx >= 0) firstPart.substring(dotIdx + 1) else null
+                    }
+            }
+        }
+    }
 }

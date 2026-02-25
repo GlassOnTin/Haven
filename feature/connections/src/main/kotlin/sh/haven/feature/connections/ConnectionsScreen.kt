@@ -25,11 +25,14 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.VpnKey
+import androidx.compose.foundation.clickable
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
@@ -39,6 +42,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -69,6 +73,7 @@ fun ConnectionsScreen(
     val error by viewModel.error.collectAsState()
     val navigateToTerminal by viewModel.navigateToTerminal.collectAsState()
     val deploySuccess by viewModel.deploySuccess.collectAsState()
+    val sessionSelection by viewModel.sessionSelection.collectAsState()
 
     LaunchedEffect(navigateToTerminal) {
         navigateToTerminal?.let { profileId ->
@@ -141,6 +146,16 @@ fun ConnectionsScreen(
                 viewModel.deployKey(profile, keyId, password)
                 deployingProfile = null
             },
+        )
+    }
+
+    sessionSelection?.let { selection ->
+        SessionPickerDialog(
+            managerLabel = selection.managerLabel,
+            sessionNames = selection.sessionNames,
+            onSelect = { name -> viewModel.onSessionSelected(selection.profileId, name) },
+            onNewSession = { viewModel.onSessionSelected(selection.profileId, null) },
+            onDismiss = { viewModel.dismissSessionPicker() },
         )
     }
 
@@ -336,4 +351,50 @@ private fun EmptyState() {
             modifier = Modifier.padding(top = 4.dp),
         )
     }
+}
+
+@Composable
+private fun SessionPickerDialog(
+    managerLabel: String,
+    sessionNames: List<String>,
+    onSelect: (String) -> Unit,
+    onNewSession: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("$managerLabel sessions") },
+        text = {
+            Column {
+                sessionNames.forEach { name ->
+                    ListItem(
+                        headlineContent = { Text(name) },
+                        modifier = Modifier.clickable { onSelect(name) },
+                    )
+                }
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                ListItem(
+                    headlineContent = {
+                        Text(
+                            "New session",
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    },
+                    leadingContent = {
+                        Icon(
+                            Icons.Filled.Add,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    },
+                    modifier = Modifier.clickable { onNewSession() },
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        },
+    )
 }
