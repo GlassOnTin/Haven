@@ -11,4 +11,5 @@ enum class SessionManager(val label: String, val command: ((String) -> String)?)
     TMUX("tmux", { name -> "tmux new-session -A -s $name" }),
     ZELLIJ("zellij", { name -> "zellij attach $name --create" }),
     SCREEN("screen", { name -> "screen -dRR $name" }),
+    BYOBU("byobu", { name -> "byobu new-session -A -s $name" }),
 }

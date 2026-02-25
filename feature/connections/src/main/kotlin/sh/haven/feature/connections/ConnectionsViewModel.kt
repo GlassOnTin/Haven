@@ -249,5 +249,6 @@ class ConnectionsViewModel @Inject constructor(
             UserPreferencesRepository.SessionManager.TMUX -> SessionManager.TMUX
             UserPreferencesRepository.SessionManager.ZELLIJ -> SessionManager.ZELLIJ
             UserPreferencesRepository.SessionManager.SCREEN -> SessionManager.SCREEN
+            UserPreferencesRepository.SessionManager.BYOBU -> SessionManager.BYOBU
         }
 }

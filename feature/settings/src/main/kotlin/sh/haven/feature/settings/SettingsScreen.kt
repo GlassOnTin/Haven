@@ -40,6 +40,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -246,6 +247,7 @@ private fun SessionManagerDialog(
     onDismiss: () -> Unit,
     onSelect: (UserPreferencesRepository.SessionManager) -> Unit,
 ) {
+    val context = LocalContext.current
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Session persistence") },
@@ -253,7 +255,22 @@ private fun SessionManagerDialog(
             Column {
                 UserPreferencesRepository.SessionManager.entries.forEach { manager ->
                     ListItem(
-                        headlineContent = { Text(manager.label) },
+                        headlineContent = {
+                            if (manager.url != null) {
+                                Text(
+                                    text = manager.label,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    textDecoration = TextDecoration.Underline,
+                                    modifier = Modifier.clickable {
+                                        context.startActivity(
+                                            Intent(Intent.ACTION_VIEW, Uri.parse(manager.url))
+                                        )
+                                    },
+                                )
+                            } else {
+                                Text(manager.label)
+                            }
+                        },
                         leadingContent = {
                             RadioButton(
                                 selected = manager == current,

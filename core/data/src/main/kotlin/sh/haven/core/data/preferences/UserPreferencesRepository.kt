@@ -71,11 +71,16 @@ class UserPreferencesRepository @Inject constructor(
         }
     }
 
-    enum class SessionManager(val label: String, val command: ((String) -> String)?) {
-        NONE("None", null),
-        TMUX("tmux", { name -> "tmux new-session -A -s $name" }),
-        ZELLIJ("zellij", { name -> "zellij attach $name --create" }),
-        SCREEN("screen", { name -> "screen -dRR $name" });
+    enum class SessionManager(
+        val label: String,
+        val url: String?,
+        val command: ((String) -> String)?,
+    ) {
+        NONE("None", null, null),
+        TMUX("tmux", "https://github.com/tmux/tmux/wiki", { name -> "tmux new-session -A -s $name" }),
+        ZELLIJ("zellij", "https://zellij.dev", { name -> "zellij attach $name --create" }),
+        SCREEN("screen", "https://www.gnu.org/software/screen/", { name -> "screen -dRR $name" }),
+        BYOBU("byobu", "https://www.byobu.org", { name -> "byobu new-session -A -s $name" });
 
         companion object {
             fun fromString(value: String?): SessionManager =
