@@ -77,9 +77,12 @@ class TerminalViewModel @Inject constructor(
     fun syncSessions() {
         val sessions = sessionManager.sessions.value
 
-        // Find sessions that are connected (with or without terminal setup)
+        // Find sessions that are connected or reconnecting (keep tabs alive during reconnect)
         val connectedIds = sessions.values
-            .filter { it.status == SessionState.Status.CONNECTED }
+            .filter {
+                it.status == SessionState.Status.CONNECTED ||
+                it.status == SessionState.Status.RECONNECTING
+            }
             .map { it.profileId }
             .toSet()
 

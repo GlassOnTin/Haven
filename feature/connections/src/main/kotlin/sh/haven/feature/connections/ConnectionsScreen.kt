@@ -251,6 +251,7 @@ private fun ConnectionListItem(
             leadingContent = {
                 when {
                     isConnecting -> CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                    session?.status == SessionState.Status.RECONNECTING -> CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 2.dp)
                     session?.status == SessionState.Status.CONNECTED -> Icon(
                         Icons.Filled.Circle,
                         contentDescription = "Connected",

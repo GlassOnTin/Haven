@@ -90,6 +90,7 @@ class ConnectionsViewModel @Inject constructor(
                     )
                     client.connect(config)
                     val useTmux = preferencesRepository.tmuxEnabled.first()
+                    sessionManager.storeConnectionConfig(profile.id, config, useTmux)
                     sessionManager.openShellForSession(profile.id, useTmux = useTmux)
                 }
                 sessionManager.updateStatus(profile.id, SshSessionManager.SessionState.Status.CONNECTED)

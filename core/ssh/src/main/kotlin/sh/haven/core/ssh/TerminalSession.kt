@@ -19,14 +19,14 @@ private const val TAG = "TerminalSession"
 class TerminalSession(
     val profileId: String,
     val label: String,
-    private val channel: ChannelShell,
-    private val client: SshClient,
+    @Volatile private var channel: ChannelShell,
+    @Volatile private var client: SshClient,
     private val onDataReceived: (ByteArray, Int, Int) -> Unit,
     private val onDisconnected: (() -> Unit)? = null,
 ) : Closeable {
 
-    private val sshInput: InputStream = channel.inputStream
-    private val sshOutput: OutputStream = channel.outputStream
+    @Volatile private var sshInput: InputStream = channel.inputStream
+    @Volatile private var sshOutput: OutputStream = channel.outputStream
 
     /** Single-thread executor for serialising writes off the main thread. */
     private val writeExecutor = Executors.newSingleThreadExecutor { r ->
@@ -123,6 +123,25 @@ class TerminalSession(
             } catch (e: Exception) {
                 Log.e(TAG, "resize failed", e)
             }
+        }
+    }
+
+    /**
+     * Swap the underlying SSH channel after a reconnect.
+     * The old reader thread has already exited (which triggered the reconnect).
+     * Starts a new reader on the new channel.
+     */
+    fun reconnect(newChannel: ChannelShell, newClient: SshClient) {
+        channel = newChannel
+        client = newClient
+        sshInput = newChannel.inputStream
+        sshOutput = newChannel.outputStream
+        Log.d(TAG, "reconnect: swapped channel for $profileId, starting new reader")
+        readerThread = thread(
+            name = "ssh-reader-$profileId",
+            isDaemon = true,
+        ) {
+            readLoop()
         }
     }
 

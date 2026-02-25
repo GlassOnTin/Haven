@@ -28,8 +28,10 @@ class SshSessionManager @Inject constructor() {
         val shellChannel: ChannelShell? = null,
         val terminalSession: TerminalSession? = null,
         val sftpChannel: ChannelSftp? = null,
+        val connectionConfig: ConnectionConfig? = null,
+        val useTmux: Boolean = false,
     ) {
-        enum class Status { CONNECTING, CONNECTED, DISCONNECTED, ERROR }
+        enum class Status { CONNECTING, CONNECTED, RECONNECTING, DISCONNECTED, ERROR }
     }
 
     private val _sessions = MutableStateFlow<Map<String, SessionState>>(emptyMap())
@@ -43,7 +45,8 @@ class SshSessionManager @Inject constructor() {
     val activeSessions: List<SessionState>
         get() = _sessions.value.values.filter {
             it.status == SessionState.Status.CONNECTED ||
-            it.status == SessionState.Status.CONNECTING
+            it.status == SessionState.Status.CONNECTING ||
+            it.status == SessionState.Status.RECONNECTING
         }
 
     val hasActiveSessions: Boolean
@@ -57,6 +60,13 @@ class SshSessionManager @Inject constructor() {
                 status = SessionState.Status.CONNECTING,
                 client = client,
             ))
+        }
+    }
+
+    fun storeConnectionConfig(profileId: String, config: ConnectionConfig, useTmux: Boolean) {
+        _sessions.update { map ->
+            val existing = map[profileId] ?: return@update map
+            map + (profileId to existing.copy(connectionConfig = config, useTmux = useTmux))
         }
     }
 
@@ -124,7 +134,12 @@ class SshSessionManager @Inject constructor() {
             onDataReceived = onDataReceived,
             onDisconnected = {
                 Log.d(TAG, "Session $profileId disconnected unexpectedly")
-                updateStatus(profileId, SessionState.Status.DISCONNECTED)
+                val sess = _sessions.value[profileId]
+                if (sess?.connectionConfig != null) {
+                    ioExecutor.execute { attemptReconnect(profileId) }
+                } else {
+                    updateStatus(profileId, SessionState.Status.DISCONNECTED)
+                }
             },
         )
         attachTerminalSession(profileId, termSession)
@@ -165,6 +180,79 @@ class SshSessionManager @Inject constructor() {
         }
     }
 
+    /**
+     * Attempt to reconnect a dropped session with exponential backoff.
+     * Called on the ioExecutor thread.
+     */
+    private fun attemptReconnect(profileId: String) {
+        val session = _sessions.value[profileId] ?: return
+        val config = session.connectionConfig ?: return
+        val useTmux = session.useTmux
+
+        updateStatus(profileId, SessionState.Status.RECONNECTING)
+
+        var delayMs = RECONNECT_INITIAL_DELAY_MS
+        for (attempt in 1..RECONNECT_MAX_ATTEMPTS) {
+            // Check if session was removed (user manually disconnected)
+            if (_sessions.value[profileId] == null) {
+                Log.d(TAG, "Reconnect cancelled for $profileId — session removed")
+                return
+            }
+
+            Log.d(TAG, "Reconnect attempt $attempt/$RECONNECT_MAX_ATTEMPTS for $profileId (delay ${delayMs}ms)")
+            try {
+                Thread.sleep(delayMs)
+            } catch (_: InterruptedException) {
+                return
+            }
+
+            // Check again after sleep
+            if (_sessions.value[profileId] == null) return
+
+            try {
+                val newClient = SshClient()
+                newClient.connectBlocking(config)
+
+                // Update session state with new client
+                _sessions.update { map ->
+                    val existing = map[profileId] ?: return@update map
+                    map + (profileId to existing.copy(client = newClient))
+                }
+
+                // Open shell and reconnect terminal
+                val channel = newClient.openShellChannel()
+                attachShellChannel(profileId, channel)
+
+                if (useTmux) {
+                    try {
+                        val sessionName = "haven-${profileId.take(8)}"
+                        Thread.sleep(200)
+                        val cmd = "tmux new-session -A -s $sessionName\n"
+                        channel.outputStream.write(cmd.toByteArray())
+                        channel.outputStream.flush()
+                        Log.d(TAG, "Reconnect: sent tmux attach for $sessionName")
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Reconnect: tmux attach failed", e)
+                    }
+                }
+
+                // Swap channel in the terminal session and restart reader
+                val termSession = _sessions.value[profileId]?.terminalSession
+                termSession?.reconnect(channel, newClient)
+
+                updateStatus(profileId, SessionState.Status.CONNECTED)
+                Log.d(TAG, "Reconnected $profileId on attempt $attempt")
+                return
+            } catch (e: Exception) {
+                Log.w(TAG, "Reconnect attempt $attempt failed for $profileId: ${e.message}")
+                delayMs = (delayMs * 2).coerceAtMost(RECONNECT_MAX_DELAY_MS)
+            }
+        }
+
+        Log.d(TAG, "Reconnect failed after $RECONNECT_MAX_ATTEMPTS attempts for $profileId")
+        updateStatus(profileId, SessionState.Status.DISCONNECTED)
+    }
+
     fun removeSession(profileId: String) {
         val session = _sessions.value[profileId] ?: return
         _sessions.update { it - profileId }
@@ -179,6 +267,12 @@ class SshSessionManager @Inject constructor() {
         ioExecutor.execute {
             snapshot.forEach { tearDown(it) }
         }
+    }
+
+    companion object {
+        private const val RECONNECT_MAX_ATTEMPTS = 5
+        private const val RECONNECT_INITIAL_DELAY_MS = 2_000L
+        private const val RECONNECT_MAX_DELAY_MS = 30_000L
     }
 
     private fun tearDown(session: SessionState) {

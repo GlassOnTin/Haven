@@ -126,6 +126,36 @@ class SshClient : Closeable {
     }
 
     /**
+     * Connect synchronously (for use on background threads like reconnect).
+     * Same as [connect] but without the coroutine wrapper.
+     */
+    fun connectBlocking(config: ConnectionConfig, connectTimeoutMs: Int = 10_000) {
+        disconnect()
+
+        val sess = jsch.getSession(config.username, config.host, config.port)
+        sess.setConfig("StrictHostKeyChecking", "no")
+        sess.serverAliveInterval = 15_000
+        sess.serverAliveCountMax = 3
+
+        when (val auth = config.authMethod) {
+            is ConnectionConfig.AuthMethod.Password -> {
+                sess.setPassword(auth.password)
+            }
+            is ConnectionConfig.AuthMethod.PrivateKey -> {
+                jsch.addIdentity(
+                    "haven-key-${System.nanoTime()}",
+                    auth.keyBytes,
+                    null,
+                    auth.passphrase.ifEmpty { null }?.toByteArray(),
+                )
+            }
+        }
+
+        sess.connect(connectTimeoutMs)
+        session = sess
+    }
+
+    /**
      * Disconnect the current session if connected.
      */
     fun disconnect() {
