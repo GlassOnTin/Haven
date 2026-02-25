@@ -29,7 +29,7 @@ class SshSessionManager @Inject constructor() {
         val terminalSession: TerminalSession? = null,
         val sftpChannel: ChannelSftp? = null,
         val connectionConfig: ConnectionConfig? = null,
-        val useTmux: Boolean = false,
+        val sessionManager: SessionManager = SessionManager.NONE,
     ) {
         enum class Status { CONNECTING, CONNECTED, RECONNECTING, DISCONNECTED, ERROR }
     }
@@ -63,10 +63,10 @@ class SshSessionManager @Inject constructor() {
         }
     }
 
-    fun storeConnectionConfig(profileId: String, config: ConnectionConfig, useTmux: Boolean) {
+    fun storeConnectionConfig(profileId: String, config: ConnectionConfig, sessionMgr: SessionManager) {
         _sessions.update { map ->
             val existing = map[profileId] ?: return@update map
-            map + (profileId to existing.copy(connectionConfig = config, useTmux = useTmux))
+            map + (profileId to existing.copy(connectionConfig = config, sessionManager = sessionMgr))
         }
     }
 
@@ -80,31 +80,11 @@ class SshSessionManager @Inject constructor() {
     /**
      * Open a shell channel on the SSH session and store it in the session state.
      * Must be called after the SSH session is connected.
-     *
-     * If [useTmux] is true, checks for tmux on the remote host and attaches to
-     * (or creates) a persistent session named "haven-{profileId-prefix}".
-     * This survives SSH disconnections — reconnecting reattaches to the same session.
      */
-    fun openShellForSession(profileId: String, useTmux: Boolean = false) {
+    fun openShellForSession(profileId: String) {
         val session = _sessions.value[profileId] ?: return
         val channel = session.client.openShellChannel()
         attachShellChannel(profileId, channel)
-
-        if (useTmux) {
-            try {
-                val sessionName = "haven-${profileId.take(8)}"
-                // Send tmux attach-or-create command to the shell.
-                // -A: attach to existing session if it exists, otherwise create.
-                // Small delay to let the shell initialize before sending.
-                Thread.sleep(200)
-                val cmd = "tmux new-session -A -s $sessionName\n"
-                channel.outputStream.write(cmd.toByteArray())
-                channel.outputStream.flush()
-                Log.d(TAG, "Sent tmux attach for session $sessionName")
-            } catch (e: Exception) {
-                Log.w(TAG, "tmux attach failed, continuing without tmux", e)
-            }
-        }
     }
 
     fun attachShellChannel(profileId: String, channel: ChannelShell) {
@@ -126,6 +106,7 @@ class SshSessionManager @Inject constructor() {
     ): TerminalSession? {
         val session = _sessions.value[profileId] ?: return null
         val channel = session.shellChannel ?: return null
+        val pendingCmd = buildSessionManagerCommand(profileId, session.sessionManager)
         val termSession = TerminalSession(
             profileId = profileId,
             label = session.label,
@@ -141,6 +122,7 @@ class SshSessionManager @Inject constructor() {
                     updateStatus(profileId, SessionState.Status.DISCONNECTED)
                 }
             },
+            pendingCommand = pendingCmd,
         )
         attachTerminalSession(profileId, termSession)
         return termSession
@@ -187,7 +169,7 @@ class SshSessionManager @Inject constructor() {
     private fun attemptReconnect(profileId: String) {
         val session = _sessions.value[profileId] ?: return
         val config = session.connectionConfig ?: return
-        val useTmux = session.useTmux
+        val sessionMgr = session.sessionManager
 
         updateStatus(profileId, SessionState.Status.RECONNECTING)
 
@@ -223,21 +205,12 @@ class SshSessionManager @Inject constructor() {
                 val channel = newClient.openShellChannel()
                 attachShellChannel(profileId, channel)
 
-                if (useTmux) {
-                    try {
-                        val sessionName = "haven-${profileId.take(8)}"
-                        Thread.sleep(200)
-                        val cmd = "tmux new-session -A -s $sessionName\n"
-                        channel.outputStream.write(cmd.toByteArray())
-                        channel.outputStream.flush()
-                        Log.d(TAG, "Reconnect: sent tmux attach for $sessionName")
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Reconnect: tmux attach failed", e)
-                    }
-                }
-
                 // Swap channel in the terminal session and restart reader
                 val termSession = _sessions.value[profileId]?.terminalSession
+                val pendingCmd = buildSessionManagerCommand(profileId, sessionMgr)
+                if (pendingCmd != null) {
+                    termSession?.pendingCommand = pendingCmd
+                }
                 termSession?.reconnect(channel, newClient)
 
                 updateStatus(profileId, SessionState.Status.CONNECTED)
@@ -267,6 +240,15 @@ class SshSessionManager @Inject constructor() {
         ioExecutor.execute {
             snapshot.forEach { tearDown(it) }
         }
+    }
+
+    /**
+     * Build the session manager command string for a given profile, or null if none.
+     */
+    private fun buildSessionManagerCommand(profileId: String, manager: SessionManager): String? {
+        val commandTemplate = manager.command ?: return null
+        val sessionName = "haven-${profileId.take(8)}"
+        return commandTemplate(sessionName)
     }
 
     companion object {

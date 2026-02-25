@@ -23,6 +23,7 @@ import sh.haven.core.data.repository.SshKeyRepository
 import sh.haven.core.ssh.ConnectionConfig
 import sh.haven.core.ssh.SshClient
 import sh.haven.core.ssh.SshConnectionService
+import sh.haven.core.ssh.SessionManager
 import sh.haven.core.ssh.SshSessionManager
 import java.util.Base64
 import javax.inject.Inject
@@ -89,9 +90,10 @@ class ConnectionsViewModel @Inject constructor(
                         authMethod = authMethod,
                     )
                     client.connect(config)
-                    val useTmux = preferencesRepository.tmuxEnabled.first()
-                    sessionManager.storeConnectionConfig(profile.id, config, useTmux)
-                    sessionManager.openShellForSession(profile.id, useTmux = useTmux)
+                    val prefSessionMgr = preferencesRepository.sessionManager.first()
+                    val sshSessionMgr = prefSessionMgr.toSshSessionManager()
+                    sessionManager.storeConnectionConfig(profile.id, config, sshSessionMgr)
+                    sessionManager.openShellForSession(profile.id)
                 }
                 sessionManager.updateStatus(profile.id, SshSessionManager.SessionState.Status.CONNECTED)
                 repository.markConnected(profile.id)
@@ -240,4 +242,12 @@ class ConnectionsViewModel @Inject constructor(
             username = config.username,
         )
     }
+
+    private fun UserPreferencesRepository.SessionManager.toSshSessionManager(): SessionManager =
+        when (this) {
+            UserPreferencesRepository.SessionManager.NONE -> SessionManager.NONE
+            UserPreferencesRepository.SessionManager.TMUX -> SessionManager.TMUX
+            UserPreferencesRepository.SessionManager.ZELLIJ -> SessionManager.ZELLIJ
+            UserPreferencesRepository.SessionManager.SCREEN -> SessionManager.SCREEN
+        }
 }

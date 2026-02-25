@@ -53,8 +53,9 @@ fun SettingsScreen(
     val biometricEnabled by viewModel.biometricEnabled.collectAsState()
     val fontSize by viewModel.terminalFontSize.collectAsState()
     val theme by viewModel.theme.collectAsState()
-    val tmuxEnabled by viewModel.tmuxEnabled.collectAsState()
+    val sessionManager by viewModel.sessionManager.collectAsState()
     var showFontSizeDialog by remember { mutableStateOf(false) }
+    var showSessionManagerDialog by remember { mutableStateOf(false) }
     var showThemeDialog by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
 
@@ -75,12 +76,15 @@ fun SettingsScreen(
                 onCheckedChange = viewModel::setBiometricEnabled,
             )
         }
-        SettingsToggleItem(
+        SettingsItem(
             icon = Icons.Filled.Terminal,
-            title = "tmux session persistence",
-            subtitle = "Maintain shell sessions through disconnections",
-            checked = tmuxEnabled,
-            onCheckedChange = viewModel::setTmuxEnabled,
+            title = "Session persistence",
+            subtitle = if (sessionManager == UserPreferencesRepository.SessionManager.NONE) {
+                "None"
+            } else {
+                sessionManager.label
+            },
+            onClick = { showSessionManagerDialog = true },
         )
         SettingsItem(
             icon = Icons.Filled.TextFields,
@@ -126,6 +130,17 @@ fun SettingsScreen(
             onSelect = { selected ->
                 viewModel.setTheme(selected)
                 showThemeDialog = false
+            },
+        )
+    }
+
+    if (showSessionManagerDialog) {
+        SessionManagerDialog(
+            current = sessionManager,
+            onDismiss = { showSessionManagerDialog = false },
+            onSelect = { selected ->
+                viewModel.setSessionManager(selected)
+                showSessionManagerDialog = false
             },
         )
     }
@@ -212,6 +227,41 @@ private fun ThemeDialog(
                         },
                         modifier = Modifier.clickable(role = Role.RadioButton) {
                             onSelect(mode)
+                        },
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        },
+    )
+}
+
+@Composable
+private fun SessionManagerDialog(
+    current: UserPreferencesRepository.SessionManager,
+    onDismiss: () -> Unit,
+    onSelect: (UserPreferencesRepository.SessionManager) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Session persistence") },
+        text = {
+            Column {
+                UserPreferencesRepository.SessionManager.entries.forEach { manager ->
+                    ListItem(
+                        headlineContent = { Text(manager.label) },
+                        leadingContent = {
+                            RadioButton(
+                                selected = manager == current,
+                                onClick = null,
+                            )
+                        },
+                        modifier = Modifier.clickable(role = Role.RadioButton) {
+                            onSelect(manager)
                         },
                     )
                 }

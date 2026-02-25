@@ -23,6 +23,7 @@ class TerminalSession(
     @Volatile private var client: SshClient,
     private val onDataReceived: (ByteArray, Int, Int) -> Unit,
     private val onDisconnected: (() -> Unit)? = null,
+    @Volatile var pendingCommand: String? = null,
 ) : Closeable {
 
     @Volatile private var sshInput: InputStream = channel.inputStream
@@ -62,12 +63,28 @@ class TerminalSession(
 
     private fun readLoop() {
         val buffer = ByteArray(8192)
+        var pendingSent = false
         try {
             while (!closed && channel.isConnected) {
                 val bytesRead = sshInput.read(buffer)
                 if (bytesRead == -1) break
                 if (bytesRead > 0) {
                     onDataReceived(buffer, 0, bytesRead)
+
+                    // After delivering output, check if we have a pending session
+                    // manager command to send once the shell prompt appears.
+                    if (!pendingSent && pendingCommand != null) {
+                        val text = String(buffer, 0, bytesRead).trimEnd()
+                        if (text.isNotEmpty()) {
+                            val last = text.last()
+                            if (last == '$' || last == '#' || last == '%' || last == '>') {
+                                Log.d(TAG, "Shell prompt detected ('$last'), sending pending command")
+                                sendToSsh((pendingCommand!! + "\n").toByteArray())
+                                pendingCommand = null
+                                pendingSent = true
+                            }
+                        }
+                    }
                 }
             }
         } catch (_: Exception) {
@@ -105,24 +122,33 @@ class TerminalSession(
         lastSendNanos = now
 
         val copy = data.copyOf()
-        writeExecutor.execute {
-            if (closed || !channel.isConnected) return@execute
-            try {
-                sshOutput.write(copy)
-                sshOutput.flush()
-            } catch (e: Exception) {
-                Log.e(TAG, "sendToSsh: write failed", e)
+        try {
+            writeExecutor.execute {
+                if (closed || !channel.isConnected) return@execute
+                try {
+                    sshOutput.write(copy)
+                    sshOutput.flush()
+                } catch (e: Exception) {
+                    Log.e(TAG, "sendToSsh: write failed", e)
+                }
             }
+        } catch (_: java.util.concurrent.RejectedExecutionException) {
+            // Executor shut down — drop the write
         }
     }
 
     fun resize(cols: Int, rows: Int) {
-        writeExecutor.execute {
-            try {
-                client.resizeShell(channel, cols, rows)
-            } catch (e: Exception) {
-                Log.e(TAG, "resize failed", e)
+        if (closed || writeExecutor.isShutdown) return
+        try {
+            writeExecutor.execute {
+                try {
+                    client.resizeShell(channel, cols, rows)
+                } catch (e: Exception) {
+                    Log.e(TAG, "resize failed", e)
+                }
             }
+        } catch (_: java.util.concurrent.RejectedExecutionException) {
+            // Executor shut down between check and execute — ignore
         }
     }
 

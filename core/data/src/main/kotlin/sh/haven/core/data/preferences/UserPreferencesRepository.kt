@@ -18,7 +18,7 @@ class UserPreferencesRepository @Inject constructor(
     private val biometricEnabledKey = booleanPreferencesKey("biometric_enabled")
     private val terminalFontSizeKey = intPreferencesKey("terminal_font_size")
     private val themeKey = stringPreferencesKey("theme")
-    private val tmuxEnabledKey = booleanPreferencesKey("tmux_enabled")
+    private val sessionManagerKey = stringPreferencesKey("session_manager")
 
     val biometricEnabled: Flow<Boolean> = dataStore.data.map { prefs ->
         prefs[biometricEnabledKey] ?: false
@@ -28,13 +28,13 @@ class UserPreferencesRepository @Inject constructor(
         prefs[terminalFontSizeKey] ?: DEFAULT_FONT_SIZE
     }
 
-    val tmuxEnabled: Flow<Boolean> = dataStore.data.map { prefs ->
-        prefs[tmuxEnabledKey] ?: false
+    val sessionManager: Flow<SessionManager> = dataStore.data.map { prefs ->
+        SessionManager.fromString(prefs[sessionManagerKey])
     }
 
-    suspend fun setTmuxEnabled(enabled: Boolean) {
+    suspend fun setSessionManager(manager: SessionManager) {
         dataStore.edit { prefs ->
-            prefs[tmuxEnabledKey] = enabled
+            prefs[sessionManagerKey] = manager.name
         }
     }
 
@@ -68,6 +68,18 @@ class UserPreferencesRepository @Inject constructor(
         companion object {
             fun fromString(value: String?): ThemeMode =
                 entries.find { it.name == value } ?: SYSTEM
+        }
+    }
+
+    enum class SessionManager(val label: String, val command: ((String) -> String)?) {
+        NONE("None", null),
+        TMUX("tmux", { name -> "tmux new-session -A -s $name" }),
+        ZELLIJ("zellij", { name -> "zellij attach $name --create" }),
+        SCREEN("screen", { name -> "screen -dRR $name" });
+
+        companion object {
+            fun fromString(value: String?): SessionManager =
+                entries.find { it.name == value } ?: NONE
         }
     }
 
