@@ -50,7 +50,7 @@ class SshClient : Closeable {
                     "haven-key",
                     auth.keyBytes,
                     null,
-                    auth.passphrase.toByteArray(),
+                    auth.passphrase.ifEmpty { null }?.toByteArray(),
                 )
             }
         }
