@@ -19,20 +19,25 @@ enum class SessionManager(
     BYOBU("byobu", { name -> "byobu new-session -A -s $name" }, "byobu ls -F '#{session_name}' 2>/dev/null");
 
     companion object {
+        /** Strip ANSI escape sequences (colors, bold, etc.) from a string. */
+        private val ANSI_REGEX = Regex("\\x1B\\[[0-9;]*[a-zA-Z]")
+        private fun stripAnsi(s: String): String = s.replace(ANSI_REGEX, "")
+
         /**
          * Parse session list output into session names.
          * Returns empty list if output is blank or unparseable.
          */
         fun parseSessionList(manager: SessionManager, output: String): List<String> {
-            if (output.isBlank()) return emptyList()
+            val clean = stripAnsi(output)
+            if (clean.isBlank()) return emptyList()
             return when (manager) {
                 NONE -> emptyList()
-                TMUX, BYOBU -> output.lines().filter { it.isNotBlank() }
-                ZELLIJ -> output.lines()
+                TMUX, BYOBU -> clean.lines().filter { it.isNotBlank() }
+                ZELLIJ -> clean.lines()
                     .filter { it.isNotBlank() }
                     .map { it.trim().split(Regex("\\s+")).first() }
                     .filter { it.isNotBlank() && !it.startsWith("No ") }
-                SCREEN -> output.lines()
+                SCREEN -> clean.lines()
                     .map { it.trim() }
                     .filter { it.contains(".") && (it.contains("Detached") || it.contains("Attached")) }
                     .mapNotNull { line ->

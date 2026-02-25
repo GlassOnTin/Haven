@@ -76,12 +76,12 @@ class SftpViewModel @Inject constructor(
     fun syncConnectedProfiles() {
         viewModelScope.launch {
             val sessions = sessionManager.sessions.value
-            val connectedIds = sessions.values
+            val connectedProfileIds = sessions.values
                 .filter { it.status == SessionState.Status.CONNECTED }
                 .map { it.profileId }
                 .toSet()
 
-            if (connectedIds.isEmpty()) {
+            if (connectedProfileIds.isEmpty()) {
                 _connectedProfiles.value = emptyList()
                 _activeProfileId.value = null
                 sftpChannel = null
@@ -89,10 +89,10 @@ class SftpViewModel @Inject constructor(
             }
 
             val profiles = withContext(Dispatchers.IO) { repository.getAll() }
-            _connectedProfiles.value = profiles.filter { it.id in connectedIds }
+            _connectedProfiles.value = profiles.filter { it.id in connectedProfileIds }
 
             // Auto-select first connected profile if none selected
-            if (_activeProfileId.value == null || _activeProfileId.value !in connectedIds) {
+            if (_activeProfileId.value == null || _activeProfileId.value !in connectedProfileIds) {
                 _connectedProfiles.value.firstOrNull()?.let { selectProfile(it.id) }
             }
         }
@@ -224,7 +224,7 @@ class SftpViewModel @Inject constructor(
             try {
                 _loading.value = true
                 withContext(Dispatchers.IO) {
-                    val channel = sessionManager.openSftpForSession(profileId)
+                    val channel = sessionManager.openSftpForProfile(profileId)
                         ?: throw IllegalStateException("Session not connected")
                     sftpChannel = channel
                     // Navigate to home directory on first connect
@@ -283,7 +283,7 @@ class SftpViewModel @Inject constructor(
 
     private fun getOrOpenChannel(profileId: String): ChannelSftp? {
         sftpChannel?.let { if (it.isConnected) return it }
-        val channel = sessionManager.openSftpForSession(profileId) ?: return null
+        val channel = sessionManager.openSftpForProfile(profileId) ?: return null
         sftpChannel = channel
         return channel
     }

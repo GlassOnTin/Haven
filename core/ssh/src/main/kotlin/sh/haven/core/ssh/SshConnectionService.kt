@@ -48,8 +48,9 @@ class SshConnectionService : Service() {
     }
 
     private fun buildNotification(): Notification {
-        val count = sessionManager.activeSessions.size
-        val labels = sessionManager.activeSessions.joinToString(", ") { it.label }
+        val active = sessionManager.activeSessions
+        val count = active.size
+        val labels = active.distinctBy { it.profileId }.joinToString(", ") { it.label }
 
         val disconnectIntent = Intent(this, SshConnectionService::class.java).apply {
             action = ACTION_DISCONNECT_ALL

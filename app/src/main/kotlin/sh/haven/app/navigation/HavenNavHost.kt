@@ -87,6 +87,11 @@ fun HavenNavHost(
                         navigateToProfileId = pendingTerminalProfileId,
                         isActive = pagerState.settledPage == Screen.Terminal.ordinal,
                         fontSize = terminalFontSize,
+                        onNavigateToConnections = {
+                            coroutineScope.launch {
+                                pagerState.animateScrollToPage(Screen.Connections.ordinal)
+                            }
+                        },
                         // Terminal composable consumes touch events, blocking pager swipe.
                         // Intercept horizontal drags at Initial pass and forward to pager.
                         terminalModifier = Modifier.pagerSwipeOverride(pagerState, coroutineScope),

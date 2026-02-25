@@ -24,8 +24,11 @@ import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LinkOff
+import androidx.compose.material.icons.filled.Password
 import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -68,12 +71,13 @@ fun ConnectionsScreen(
 ) {
     val connections by viewModel.connections.collectAsState()
     val sshKeys by viewModel.sshKeys.collectAsState()
-    val sessions by viewModel.sessions.collectAsState()
-    val connectingId by viewModel.connectingId.collectAsState()
+    val profileStatuses by viewModel.profileStatuses.collectAsState()
+    val connectingProfileId by viewModel.connectingProfileId.collectAsState()
     val error by viewModel.error.collectAsState()
     val navigateToTerminal by viewModel.navigateToTerminal.collectAsState()
     val deploySuccess by viewModel.deploySuccess.collectAsState()
     val sessionSelection by viewModel.sessionSelection.collectAsState()
+    val passwordFallback by viewModel.passwordFallback.collectAsState()
 
     LaunchedEffect(navigateToTerminal) {
         navigateToTerminal?.let { profileId ->
@@ -137,6 +141,18 @@ fun ConnectionsScreen(
         )
     }
 
+    passwordFallback?.let { profile ->
+        PasswordDialog(
+            profile = profile,
+            hasKeys = sshKeys.isNotEmpty(),
+            onDismiss = { viewModel.dismissPasswordFallback() },
+            onConnect = { password ->
+                viewModel.connect(profile, password)
+                viewModel.dismissPasswordFallback()
+            },
+        )
+    }
+
     deployingProfile?.let { profile ->
         DeployKeyDialog(
             profile = profile,
@@ -153,8 +169,8 @@ fun ConnectionsScreen(
         SessionPickerDialog(
             managerLabel = selection.managerLabel,
             sessionNames = selection.sessionNames,
-            onSelect = { name -> viewModel.onSessionSelected(selection.profileId, name) },
-            onNewSession = { viewModel.onSessionSelected(selection.profileId, null) },
+            onSelect = { name -> viewModel.onSessionSelected(selection.sessionId, name) },
+            onNewSession = { viewModel.onSessionSelected(selection.sessionId, null) },
             onDismiss = { viewModel.dismissSessionPicker() },
         )
     }
@@ -217,15 +233,17 @@ fun ConnectionsScreen(
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     items(connections, key = { it.id }) { profile ->
-                        val session = sessions[profile.id]
+                        val profileStatus = profileStatuses[profile.id]
                         ConnectionListItem(
                             profile = profile,
-                            session = session,
-                            isConnecting = connectingId == profile.id,
+                            profileStatus = profileStatus,
+                            isConnecting = connectingProfileId == profile.id,
                             hasKeys = sshKeys.isNotEmpty(),
                             onTap = {
-                                if (session?.status == SessionState.Status.CONNECTED) {
+                                if (profileStatus == SessionState.Status.CONNECTED) {
                                     onNavigateToTerminal(profile.id)
+                                } else if (sshKeys.isNotEmpty()) {
+                                    viewModel.connectWithKey(profile)
                                 } else {
                                     connectingProfile = profile
                                 }
@@ -234,6 +252,7 @@ fun ConnectionsScreen(
                             onDelete = { viewModel.deleteConnection(profile.id) },
                             onDisconnect = { viewModel.disconnect(profile.id) },
                             onDeployKey = { deployingProfile = profile },
+                            onConnectWithPassword = { connectingProfile = profile },
                         )
                     }
                 }
@@ -246,7 +265,7 @@ fun ConnectionsScreen(
 @Composable
 private fun ConnectionListItem(
     profile: ConnectionProfile,
-    session: SessionState?,
+    profileStatus: SessionState.Status?,
     isConnecting: Boolean,
     hasKeys: Boolean,
     onTap: () -> Unit,
@@ -254,6 +273,7 @@ private fun ConnectionListItem(
     onDelete: () -> Unit,
     onDisconnect: () -> Unit,
     onDeployKey: () -> Unit,
+    onConnectWithPassword: () -> Unit,
 ) {
     var showMenu by remember { mutableStateOf(false) }
 
@@ -266,14 +286,14 @@ private fun ConnectionListItem(
             leadingContent = {
                 when {
                     isConnecting -> CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                    session?.status == SessionState.Status.RECONNECTING -> CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 2.dp)
-                    session?.status == SessionState.Status.CONNECTED -> Icon(
+                    profileStatus == SessionState.Status.RECONNECTING -> CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 2.dp)
+                    profileStatus == SessionState.Status.CONNECTED -> Icon(
                         Icons.Filled.Circle,
                         contentDescription = "Connected",
                         tint = Color(0xFF4CAF50),
                         modifier = Modifier.size(12.dp),
                     )
-                    session?.status == SessionState.Status.ERROR -> Icon(
+                    profileStatus == SessionState.Status.ERROR -> Icon(
                         Icons.Filled.Circle,
                         contentDescription = "Error",
                         tint = Color(0xFFF44336),
@@ -302,7 +322,14 @@ private fun ConnectionListItem(
                 leadingIcon = { Icon(Icons.Filled.Edit, null) },
                 onClick = { showMenu = false; onEdit() },
             )
-            if (session?.status == SessionState.Status.CONNECTED) {
+            if (profileStatus != SessionState.Status.CONNECTED) {
+                DropdownMenuItem(
+                    text = { Text("Connect with password") },
+                    leadingIcon = { Icon(Icons.Filled.Password, null) },
+                    onClick = { showMenu = false; onConnectWithPassword() },
+                )
+            }
+            if (profileStatus == SessionState.Status.CONNECTED) {
                 DropdownMenuItem(
                     text = { Text("Disconnect") },
                     leadingIcon = { Icon(Icons.Filled.LinkOff, null) },
@@ -365,7 +392,7 @@ private fun SessionPickerDialog(
         onDismissRequest = onDismiss,
         title = { Text("$managerLabel sessions") },
         text = {
-            Column {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 sessionNames.forEach { name ->
                     ListItem(
                         headlineContent = { Text(name) },

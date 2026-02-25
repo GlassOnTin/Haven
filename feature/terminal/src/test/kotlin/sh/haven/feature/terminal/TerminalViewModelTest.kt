@@ -33,7 +33,7 @@ class TerminalViewModelTest {
     @Test
     fun `syncSessions skips CONNECTING sessions`() {
         val client = mockk<SshClient>(relaxed = true)
-        sessionManager.registerSession("id1", "Server", client)
+        sessionManager.registerSession("profile1", "Server", client)
         // Status is CONNECTING, no shell channel
 
         viewModel.syncSessions()
@@ -43,8 +43,8 @@ class TerminalViewModelTest {
     @Test
     fun `syncSessions skips CONNECTED sessions without shell channel`() {
         val client = mockk<SshClient>(relaxed = true)
-        sessionManager.registerSession("id1", "Server", client)
-        sessionManager.updateStatus("id1", SshSessionManager.SessionState.Status.CONNECTED)
+        val sessionId = sessionManager.registerSession("profile1", "Server", client)
+        sessionManager.updateStatus(sessionId, SshSessionManager.SessionState.Status.CONNECTED)
         // No shell channel attached
 
         viewModel.syncSessions()
@@ -58,17 +58,35 @@ class TerminalViewModelTest {
     }
 
     @Test
-    fun `closeSession removes from session manager`() {
+    fun `closeTab removes from session manager`() {
         val client = mockk<SshClient>(relaxed = true)
-        sessionManager.registerSession("id1", "Server", client)
-        viewModel.closeSession("id1")
+        val sessionId = sessionManager.registerSession("profile1", "Server", client)
+        viewModel.closeTab(sessionId)
 
-        assertEquals(null, sessionManager.getSession("id1"))
+        assertEquals(null, sessionManager.getSession(sessionId))
+    }
+
+    @Test
+    fun `closeSession removes all sessions for profile`() {
+        val c1 = mockk<SshClient>(relaxed = true)
+        val c2 = mockk<SshClient>(relaxed = true)
+        sessionManager.registerSession("profile1", "Server", c1)
+        sessionManager.registerSession("profile1", "Server", c2)
+
+        viewModel.closeSession("profile1")
+
+        assertEquals(0, sessionManager.getSessionsForProfile("profile1").size)
     }
 
     @Test
     fun `selectTabByProfileId with no matching tab is no-op`() {
         viewModel.selectTabByProfileId("nonexistent")
+        assertEquals(0, viewModel.activeTabIndex.value)
+    }
+
+    @Test
+    fun `selectTabBySessionId with no matching tab is no-op`() {
+        viewModel.selectTabBySessionId("nonexistent")
         assertEquals(0, viewModel.activeTabIndex.value)
     }
 }

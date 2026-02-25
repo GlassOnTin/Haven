@@ -25,6 +25,7 @@ class TerminalSessionTest {
         val client = mockk<SshClient>(relaxed = true)
 
         val session = TerminalSession(
+            sessionId = "test-session",
             profileId = "test",
             label = "test@host",
             channel = channel,
@@ -54,6 +55,7 @@ class TerminalSessionTest {
         val client = mockk<SshClient>(relaxed = true)
 
         val session = TerminalSession(
+            sessionId = "test-session",
             profileId = "test",
             label = "test@host",
             channel = channel,
@@ -85,6 +87,7 @@ class TerminalSessionTest {
         val client = mockk<SshClient>(relaxed = true)
 
         val session = TerminalSession(
+            sessionId = "test-session",
             profileId = "test",
             label = "test@host",
             channel = channel,
@@ -120,6 +123,7 @@ class TerminalSessionTest {
         val client = mockk<SshClient>(relaxed = true)
 
         val session = TerminalSession(
+            sessionId = "test-session",
             profileId = "test",
             label = "test@host",
             channel = channel,
@@ -147,6 +151,7 @@ class TerminalSessionTest {
         val client = mockk<SshClient>(relaxed = true)
 
         val session = TerminalSession(
+            sessionId = "test-session",
             profileId = "test",
             label = "test@host",
             channel = channel,
@@ -169,6 +174,7 @@ class TerminalSessionTest {
         val client = mockk<SshClient>(relaxed = true)
 
         val session = TerminalSession(
+            sessionId = "test-session",
             profileId = "test",
             label = "test@host",
             channel = channel,
@@ -199,6 +205,7 @@ class TerminalSessionTest {
         val client = mockk<SshClient>(relaxed = true)
 
         val session = TerminalSession(
+            sessionId = "test-session",
             profileId = "test",
             label = "test@host",
             channel = channel,
@@ -229,6 +236,7 @@ class TerminalSessionTest {
         val client = mockk<SshClient>(relaxed = true)
 
         val session = TerminalSession(
+            sessionId = "test-session",
             profileId = "test",
             label = "test@host",
             channel = channel,

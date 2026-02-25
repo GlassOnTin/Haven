@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import java.util.UUID
 import java.util.concurrent.Executors
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -15,12 +16,14 @@ private const val TAG = "SshSessionManager"
 
 /**
  * Manages active SSH sessions across the app.
- * Sessions are identified by connection profile ID.
+ * Sessions are identified by a unique sessionId (UUID).
+ * Multiple sessions may share the same profileId (multi-tab).
  */
 @Singleton
 class SshSessionManager @Inject constructor() {
 
     data class SessionState(
+        val sessionId: String,
         val profileId: String,
         val label: String,
         val status: Status,
@@ -53,28 +56,34 @@ class SshSessionManager @Inject constructor() {
     val hasActiveSessions: Boolean
         get() = activeSessions.isNotEmpty()
 
-    fun registerSession(profileId: String, label: String, client: SshClient) {
+    /**
+     * Register a new session. Returns the generated sessionId (UUID).
+     */
+    fun registerSession(profileId: String, label: String, client: SshClient): String {
+        val sessionId = UUID.randomUUID().toString()
         _sessions.update { map ->
-            map + (profileId to SessionState(
+            map + (sessionId to SessionState(
+                sessionId = sessionId,
                 profileId = profileId,
                 label = label,
                 status = SessionState.Status.CONNECTING,
                 client = client,
             ))
         }
+        return sessionId
     }
 
-    fun storeConnectionConfig(profileId: String, config: ConnectionConfig, sessionMgr: SessionManager) {
+    fun storeConnectionConfig(sessionId: String, config: ConnectionConfig, sessionMgr: SessionManager) {
         _sessions.update { map ->
-            val existing = map[profileId] ?: return@update map
-            map + (profileId to existing.copy(connectionConfig = config, sessionManager = sessionMgr))
+            val existing = map[sessionId] ?: return@update map
+            map + (sessionId to existing.copy(connectionConfig = config, sessionManager = sessionMgr))
         }
     }
 
-    fun updateStatus(profileId: String, status: SessionState.Status) {
+    fun updateStatus(sessionId: String, status: SessionState.Status) {
         _sessions.update { map ->
-            val existing = map[profileId] ?: return@update map
-            map + (profileId to existing.copy(status = status))
+            val existing = map[sessionId] ?: return@update map
+            map + (sessionId to existing.copy(status = status))
         }
     }
 
@@ -82,16 +91,16 @@ class SshSessionManager @Inject constructor() {
      * Open a shell channel on the SSH session and store it in the session state.
      * Must be called after the SSH session is connected.
      */
-    fun openShellForSession(profileId: String) {
-        val session = _sessions.value[profileId] ?: return
+    fun openShellForSession(sessionId: String) {
+        val session = _sessions.value[sessionId] ?: return
         val channel = session.client.openShellChannel()
-        attachShellChannel(profileId, channel)
+        attachShellChannel(sessionId, channel)
     }
 
-    fun attachShellChannel(profileId: String, channel: ChannelShell) {
+    fun attachShellChannel(sessionId: String, channel: ChannelShell) {
         _sessions.update { map ->
-            val existing = map[profileId] ?: return@update map
-            map + (profileId to existing.copy(shellChannel = channel))
+            val existing = map[sessionId] ?: return@update map
+            map + (sessionId to existing.copy(shellChannel = channel))
         }
     }
 
@@ -102,64 +111,72 @@ class SshSessionManager @Inject constructor() {
      * Call [TerminalSession.start] after wiring up the emulator.
      */
     fun createTerminalSession(
-        profileId: String,
+        sessionId: String,
         onDataReceived: (ByteArray, Int, Int) -> Unit,
     ): TerminalSession? {
-        val session = _sessions.value[profileId] ?: return null
+        val session = _sessions.value[sessionId] ?: return null
         val channel = session.shellChannel ?: return null
-        val pendingCmd = buildSessionManagerCommand(profileId, session.sessionManager)
+        val pendingCmd = buildSessionManagerCommand(sessionId, session.sessionManager)
         val termSession = TerminalSession(
-            profileId = profileId,
+            sessionId = sessionId,
+            profileId = session.profileId,
             label = session.label,
             channel = channel,
             client = session.client,
             onDataReceived = onDataReceived,
-            onDisconnected = {
-                Log.d(TAG, "Session $profileId disconnected unexpectedly")
-                val sess = _sessions.value[profileId]
-                if (sess?.connectionConfig != null) {
-                    ioExecutor.execute { attemptReconnect(profileId) }
+            onDisconnected = { cleanExit ->
+                if (cleanExit) {
+                    Log.d(TAG, "Session $sessionId exited cleanly — not reconnecting")
+                    updateStatus(sessionId, SessionState.Status.DISCONNECTED)
                 } else {
-                    updateStatus(profileId, SessionState.Status.DISCONNECTED)
+                    Log.d(TAG, "Session $sessionId disconnected unexpectedly")
+                    val sess = _sessions.value[sessionId]
+                    if (sess?.connectionConfig != null) {
+                        ioExecutor.execute { attemptReconnect(sessionId) }
+                    } else {
+                        updateStatus(sessionId, SessionState.Status.DISCONNECTED)
+                    }
                 }
             },
             pendingCommand = pendingCmd,
         )
-        attachTerminalSession(profileId, termSession)
+        attachTerminalSession(sessionId, termSession)
         return termSession
     }
 
     /**
      * Whether a session has a shell channel ready but no terminal session yet.
      */
-    fun isReadyForTerminal(profileId: String): Boolean {
-        val session = _sessions.value[profileId] ?: return false
+    fun isReadyForTerminal(sessionId: String): Boolean {
+        val session = _sessions.value[sessionId] ?: return false
         return session.status == SessionState.Status.CONNECTED &&
             session.shellChannel != null &&
             session.terminalSession == null
     }
 
     /**
-     * Open an SFTP channel on the SSH session and store it in the session state.
-     * Returns the channel, or null if the session isn't connected.
+     * Open an SFTP channel for a profile. Finds any connected session for that profile
+     * and opens (or reuses) an SFTP channel on it.
+     * Returns the channel, or null if no session for this profile is connected.
      */
-    fun openSftpForSession(profileId: String): ChannelSftp? {
-        val session = _sessions.value[profileId] ?: return null
-        if (session.status != SessionState.Status.CONNECTED) return null
+    fun openSftpForProfile(profileId: String): ChannelSftp? {
+        val session = _sessions.value.values
+            .filter { it.profileId == profileId && it.status == SessionState.Status.CONNECTED }
+            .firstOrNull() ?: return null
         // Reuse existing channel if still connected
         session.sftpChannel?.let { if (it.isConnected) return it }
         val channel = session.client.openSftpChannel()
         _sessions.update { map ->
-            val existing = map[profileId] ?: return@update map
-            map + (profileId to existing.copy(sftpChannel = channel))
+            val existing = map[session.sessionId] ?: return@update map
+            map + (session.sessionId to existing.copy(sftpChannel = channel))
         }
         return channel
     }
 
-    fun attachTerminalSession(profileId: String, terminalSession: TerminalSession) {
+    fun attachTerminalSession(sessionId: String, terminalSession: TerminalSession) {
         _sessions.update { map ->
-            val existing = map[profileId] ?: return@update map
-            map + (profileId to existing.copy(terminalSession = terminalSession))
+            val existing = map[sessionId] ?: return@update map
+            map + (sessionId to existing.copy(terminalSession = terminalSession))
         }
     }
 
@@ -167,22 +184,22 @@ class SshSessionManager @Inject constructor() {
      * Attempt to reconnect a dropped session with exponential backoff.
      * Called on the ioExecutor thread.
      */
-    private fun attemptReconnect(profileId: String) {
-        val session = _sessions.value[profileId] ?: return
+    private fun attemptReconnect(sessionId: String) {
+        val session = _sessions.value[sessionId] ?: return
         val config = session.connectionConfig ?: return
         val sessionMgr = session.sessionManager
 
-        updateStatus(profileId, SessionState.Status.RECONNECTING)
+        updateStatus(sessionId, SessionState.Status.RECONNECTING)
 
         var delayMs = RECONNECT_INITIAL_DELAY_MS
         for (attempt in 1..RECONNECT_MAX_ATTEMPTS) {
             // Check if session was removed (user manually disconnected)
-            if (_sessions.value[profileId] == null) {
-                Log.d(TAG, "Reconnect cancelled for $profileId — session removed")
+            if (_sessions.value[sessionId] == null) {
+                Log.d(TAG, "Reconnect cancelled for $sessionId — session removed")
                 return
             }
 
-            Log.d(TAG, "Reconnect attempt $attempt/$RECONNECT_MAX_ATTEMPTS for $profileId (delay ${delayMs}ms)")
+            Log.d(TAG, "Reconnect attempt $attempt/$RECONNECT_MAX_ATTEMPTS for $sessionId (delay ${delayMs}ms)")
             try {
                 Thread.sleep(delayMs)
             } catch (_: InterruptedException) {
@@ -190,7 +207,7 @@ class SshSessionManager @Inject constructor() {
             }
 
             // Check again after sleep
-            if (_sessions.value[profileId] == null) return
+            if (_sessions.value[sessionId] == null) return
 
             try {
                 val newClient = SshClient()
@@ -198,42 +215,82 @@ class SshSessionManager @Inject constructor() {
 
                 // Update session state with new client
                 _sessions.update { map ->
-                    val existing = map[profileId] ?: return@update map
-                    map + (profileId to existing.copy(client = newClient))
+                    val existing = map[sessionId] ?: return@update map
+                    map + (sessionId to existing.copy(client = newClient))
                 }
 
                 // Open shell and reconnect terminal
                 val channel = newClient.openShellChannel()
-                attachShellChannel(profileId, channel)
+                attachShellChannel(sessionId, channel)
 
                 // Swap channel in the terminal session and restart reader
-                val termSession = _sessions.value[profileId]?.terminalSession
-                val pendingCmd = buildSessionManagerCommand(profileId, sessionMgr)
+                val termSession = _sessions.value[sessionId]?.terminalSession
+                val pendingCmd = buildSessionManagerCommand(sessionId, sessionMgr)
                 if (pendingCmd != null) {
                     termSession?.pendingCommand = pendingCmd
                 }
                 termSession?.reconnect(channel, newClient)
 
-                updateStatus(profileId, SessionState.Status.CONNECTED)
-                Log.d(TAG, "Reconnected $profileId on attempt $attempt")
+                updateStatus(sessionId, SessionState.Status.CONNECTED)
+                Log.d(TAG, "Reconnected $sessionId on attempt $attempt")
                 return
             } catch (e: Exception) {
-                Log.w(TAG, "Reconnect attempt $attempt failed for $profileId: ${e.message}")
+                Log.w(TAG, "Reconnect attempt $attempt failed for $sessionId: ${e.message}")
                 delayMs = (delayMs * 2).coerceAtMost(RECONNECT_MAX_DELAY_MS)
             }
         }
 
-        Log.d(TAG, "Reconnect failed after $RECONNECT_MAX_ATTEMPTS attempts for $profileId")
-        updateStatus(profileId, SessionState.Status.DISCONNECTED)
+        Log.d(TAG, "Reconnect failed after $RECONNECT_MAX_ATTEMPTS attempts for $sessionId")
+        updateStatus(sessionId, SessionState.Status.DISCONNECTED)
     }
 
-    fun removeSession(profileId: String) {
-        val session = _sessions.value[profileId] ?: return
-        _sessions.update { it - profileId }
+    fun removeSession(sessionId: String) {
+        val session = _sessions.value[sessionId] ?: return
+        _sessions.update { it - sessionId }
         ioExecutor.execute { tearDown(session) }
     }
 
-    fun getSession(profileId: String): SessionState? = _sessions.value[profileId]
+    fun getSession(sessionId: String): SessionState? = _sessions.value[sessionId]
+
+    // --- Profile-level helpers ---
+
+    fun getSessionsForProfile(profileId: String): List<SessionState> =
+        _sessions.value.values.filter { it.profileId == profileId }
+
+    fun isProfileConnected(profileId: String): Boolean =
+        _sessions.value.values.any {
+            it.profileId == profileId && it.status == SessionState.Status.CONNECTED
+        }
+
+    fun getProfileStatus(profileId: String): SessionState.Status? {
+        val statuses = _sessions.value.values
+            .filter { it.profileId == profileId }
+            .map { it.status }
+        if (statuses.isEmpty()) return null
+        // Priority: CONNECTED > RECONNECTING > CONNECTING > ERROR > DISCONNECTED
+        return when {
+            SessionState.Status.CONNECTED in statuses -> SessionState.Status.CONNECTED
+            SessionState.Status.RECONNECTING in statuses -> SessionState.Status.RECONNECTING
+            SessionState.Status.CONNECTING in statuses -> SessionState.Status.CONNECTING
+            SessionState.Status.ERROR in statuses -> SessionState.Status.ERROR
+            else -> SessionState.Status.DISCONNECTED
+        }
+    }
+
+    fun getConnectionConfigForProfile(profileId: String): Pair<ConnectionConfig, SessionManager>? {
+        val session = _sessions.value.values
+            .firstOrNull { it.profileId == profileId && it.connectionConfig != null }
+            ?: return null
+        return session.connectionConfig!! to session.sessionManager
+    }
+
+    fun removeAllSessionsForProfile(profileId: String) {
+        val toRemove = _sessions.value.values.filter { it.profileId == profileId }
+        _sessions.update { map -> map.filterValues { it.profileId != profileId } }
+        ioExecutor.execute {
+            toRemove.forEach { tearDown(it) }
+        }
+    }
 
     fun disconnectAll() {
         val snapshot = _sessions.value.values.toList()
@@ -243,21 +300,22 @@ class SshSessionManager @Inject constructor() {
         }
     }
 
-    fun setChosenSessionName(profileId: String, name: String) {
+    fun setChosenSessionName(sessionId: String, name: String) {
         _sessions.update { map ->
-            val existing = map[profileId] ?: return@update map
-            map + (profileId to existing.copy(chosenSessionName = name))
+            val existing = map[sessionId] ?: return@update map
+            map + (sessionId to existing.copy(chosenSessionName = name))
         }
     }
 
     /**
-     * Build the session manager command string for a given profile, or null if none.
+     * Build the session manager command string for a given session, or null if none.
      * Uses the user-chosen session name if set, otherwise a deterministic name.
      */
-    private fun buildSessionManagerCommand(profileId: String, manager: SessionManager): String? {
+    private fun buildSessionManagerCommand(sessionId: String, manager: SessionManager): String? {
         val commandTemplate = manager.command ?: return null
-        val sessionName = _sessions.value[profileId]?.chosenSessionName
-            ?: "haven-${profileId.take(8)}"
+        val session = _sessions.value[sessionId]
+        val sessionName = session?.chosenSessionName
+            ?: "haven-${session?.profileId?.take(8) ?: sessionId.take(8)}"
         return commandTemplate(sessionName)
     }
 

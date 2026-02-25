@@ -17,12 +17,13 @@ private const val TAG = "TerminalSession"
  * Call [sendToSsh] to forward keyboard input to the remote shell.
  */
 class TerminalSession(
+    val sessionId: String,
     val profileId: String,
     val label: String,
     @Volatile private var channel: ChannelShell,
     @Volatile private var client: SshClient,
     private val onDataReceived: (ByteArray, Int, Int) -> Unit,
-    private val onDisconnected: (() -> Unit)? = null,
+    private val onDisconnected: ((cleanExit: Boolean) -> Unit)? = null,
     @Volatile var pendingCommand: String? = null,
 ) : Closeable {
 
@@ -31,7 +32,7 @@ class TerminalSession(
 
     /** Single-thread executor for serialising writes off the main thread. */
     private val writeExecutor = Executors.newSingleThreadExecutor { r ->
-        Thread(r, "ssh-writer-$profileId").apply { isDaemon = true }
+        Thread(r, "ssh-writer-$sessionId").apply { isDaemon = true }
     }
 
     @Volatile
@@ -54,7 +55,7 @@ class TerminalSession(
      */
     fun start() {
         readerThread = thread(
-            name = "ssh-reader-$profileId",
+            name = "ssh-reader-$sessionId",
             isDaemon = true,
         ) {
             readLoop()
@@ -64,10 +65,15 @@ class TerminalSession(
     private fun readLoop() {
         val buffer = ByteArray(8192)
         var pendingSent = false
+        var gotEof = false
+        var gotException = false
         try {
             while (!closed && channel.isConnected) {
                 val bytesRead = sshInput.read(buffer)
-                if (bytesRead == -1) break
+                if (bytesRead == -1) {
+                    gotEof = true
+                    break
+                }
                 if (bytesRead > 0) {
                     onDataReceived(buffer, 0, bytesRead)
 
@@ -88,11 +94,20 @@ class TerminalSession(
                 }
             }
         } catch (_: Exception) {
-            // Channel closed or IO error
+            gotException = true
         }
         if (!closed) {
-            Log.d(TAG, "readLoop ended for $profileId — connection lost")
-            onDisconnected?.invoke()
+            // Wait briefly for channel to fully close and exit status to propagate
+            for (i in 1..10) {
+                if (channel.isClosed) break
+                try { Thread.sleep(50) } catch (_: InterruptedException) { break }
+            }
+            val exitStatus = channel.exitStatus
+            // Clean exit: got EOF or channel closed with a real exit status (>= 0)
+            // Unexpected drop: exception thrown, or no exit status available (-1)
+            val cleanExit = (gotEof || exitStatus >= 0) && !gotException
+            Log.d(TAG, "readLoop ended for $sessionId — eof=$gotEof exception=$gotException exitStatus=$exitStatus cleanExit=$cleanExit")
+            onDisconnected?.invoke(cleanExit)
         }
     }
 
@@ -162,9 +177,9 @@ class TerminalSession(
         client = newClient
         sshInput = newChannel.inputStream
         sshOutput = newChannel.outputStream
-        Log.d(TAG, "reconnect: swapped channel for $profileId, starting new reader")
+        Log.d(TAG, "reconnect: swapped channel for $sessionId, starting new reader")
         readerThread = thread(
-            name = "ssh-reader-$profileId",
+            name = "ssh-reader-$sessionId",
             isDaemon = true,
         ) {
             readLoop()
