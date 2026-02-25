@@ -1,7 +1,11 @@
 package sh.haven.feature.terminal
 
+import android.app.Activity
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -26,9 +30,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 
 // VT100/xterm escape sequences for special keys
 private const val ESC = "\u001b"
@@ -40,6 +46,7 @@ private val KEY_DOWN = "$ESC[B".toByteArray()
 private val KEY_RIGHT = "$ESC[C".toByteArray()
 private val KEY_LEFT = "$ESC[D".toByteArray()
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun KeyboardToolbar(
     onSendBytes: (ByteArray) -> Unit,
@@ -49,8 +56,8 @@ fun KeyboardToolbar(
     var shiftActive by remember { mutableStateOf(false) }
     var ctrlActive by remember { mutableStateOf(false) }
     var altActive by remember { mutableStateOf(false) }
-    val keyboardController = LocalSoftwareKeyboardController.current
-    var keyboardVisible by remember { mutableStateOf(true) }
+    val view = LocalView.current
+    val imeVisible = WindowInsets.isImeVisible
 
     Surface(
         tonalElevation = 2.dp,
@@ -64,13 +71,13 @@ fun KeyboardToolbar(
         ) {
             // Toggle keyboard
             ToolbarIconButton(Icons.Filled.Keyboard, "Toggle keyboard") {
-                if (keyboardVisible) {
-                    keyboardController?.hide()
-                    keyboardVisible = false
+                val window = (view.context as? Activity)?.window ?: return@ToolbarIconButton
+                val controller = WindowCompat.getInsetsController(window, view)
+                if (imeVisible) {
+                    controller.hide(WindowInsetsCompat.Type.ime())
                 } else {
                     focusRequester.requestFocus()
-                    keyboardController?.show()
-                    keyboardVisible = true
+                    controller.show(WindowInsetsCompat.Type.ime())
                 }
             }
 

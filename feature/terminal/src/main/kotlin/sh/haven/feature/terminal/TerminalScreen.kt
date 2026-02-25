@@ -1,5 +1,6 @@
 package sh.haven.feature.terminal
 
+import android.app.Activity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,20 +20,36 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import org.connectbot.terminal.Terminal
 
 @Composable
 fun TerminalScreen(
     navigateToProfileId: String? = null,
+    isActive: Boolean = false,
     terminalModifier: Modifier = Modifier,
     viewModel: TerminalViewModel = hiltViewModel(),
 ) {
     val tabs by viewModel.tabs.collectAsState()
     val activeTabIndex by viewModel.activeTabIndex.collectAsState()
+    val view = LocalView.current
+
+    // Show/hide keyboard when this tab becomes active/inactive
+    LaunchedEffect(isActive) {
+        val window = (view.context as? Activity)?.window ?: return@LaunchedEffect
+        val controller = WindowCompat.getInsetsController(window, view)
+        if (isActive && tabs.isNotEmpty()) {
+            controller.show(WindowInsetsCompat.Type.ime())
+        } else if (!isActive) {
+            controller.hide(WindowInsetsCompat.Type.ime())
+        }
+    }
 
     // Sync tabs with session manager on each composition
     LaunchedEffect(Unit) {
