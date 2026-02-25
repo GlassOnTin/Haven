@@ -123,6 +123,7 @@ fun ConnectionsScreen(
     connectingProfile?.let { profile ->
         PasswordDialog(
             profile = profile,
+            hasKeys = sshKeys.isNotEmpty(),
             onDismiss = { connectingProfile = null },
             onConnect = { password ->
                 viewModel.connect(profile, password)
