@@ -31,6 +31,42 @@ class TerminalViewModel @Inject constructor(
     private val _activeTabIndex = MutableStateFlow(0)
     val activeTabIndex: StateFlow<Int> = _activeTabIndex.asStateFlow()
 
+    // Modifier key state — read by onKeyboardInput callback, toggled by toolbar
+    private val _ctrlActive = MutableStateFlow(false)
+    val ctrlActive: StateFlow<Boolean> = _ctrlActive.asStateFlow()
+
+    private val _altActive = MutableStateFlow(false)
+    val altActive: StateFlow<Boolean> = _altActive.asStateFlow()
+
+    fun toggleCtrl() { _ctrlActive.value = !_ctrlActive.value }
+    fun toggleAlt() { _altActive.value = !_altActive.value }
+
+    /**
+     * Apply Ctrl/Alt modifiers to keyboard input, then reset them (one-shot).
+     * Ctrl+letter → char AND 0x1F (e.g. Ctrl+C = 0x03).
+     * Alt+char → ESC prefix.
+     */
+    private fun applyModifiers(data: ByteArray): ByteArray {
+        val ctrl = _ctrlActive.value
+        val alt = _altActive.value
+        if (!ctrl && !alt) return data
+
+        _ctrlActive.value = false
+        _altActive.value = false
+
+        var result = data
+        if (ctrl && result.size == 1) {
+            val b = result[0].toInt() and 0xFF
+            if (b in 0x40..0x7F) {
+                result = byteArrayOf((b and 0x1F).toByte())
+            }
+        }
+        if (alt) {
+            result = byteArrayOf(0x1b) + result
+        }
+        return result
+    }
+
     private val trackedProfileIds = mutableSetOf<String>()
 
     /**
@@ -76,7 +112,7 @@ class TerminalViewModel @Inject constructor(
                 initialCols = 80,
                 defaultForeground = Color.White,
                 defaultBackground = Color(0xFF1A1A2E),
-                onKeyboardInput = { data -> termSession.sendToSsh(data) },
+                onKeyboardInput = { data -> termSession.sendToSsh(applyModifiers(data)) },
                 onResize = { dims -> termSession.resize(dims.columns, dims.rows) },
             )
 

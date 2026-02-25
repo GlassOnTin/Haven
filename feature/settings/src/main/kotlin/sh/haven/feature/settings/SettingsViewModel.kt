@@ -40,6 +40,9 @@ class SettingsViewModel @Inject constructor(
             UserPreferencesRepository.ThemeMode.SYSTEM,
         )
 
+    val tmuxEnabled: StateFlow<Boolean> = preferencesRepository.tmuxEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
     fun setBiometricEnabled(enabled: Boolean) {
         viewModelScope.launch {
             preferencesRepository.setBiometricEnabled(enabled)
@@ -55,6 +58,12 @@ class SettingsViewModel @Inject constructor(
     fun setTheme(mode: UserPreferencesRepository.ThemeMode) {
         viewModelScope.launch {
             preferencesRepository.setTheme(mode)
+        }
+    }
+
+    fun setTmuxEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setTmuxEnabled(enabled)
         }
     }
 }

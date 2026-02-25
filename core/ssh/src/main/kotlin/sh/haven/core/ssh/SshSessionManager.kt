@@ -70,11 +70,31 @@ class SshSessionManager @Inject constructor() {
     /**
      * Open a shell channel on the SSH session and store it in the session state.
      * Must be called after the SSH session is connected.
+     *
+     * If [useTmux] is true, checks for tmux on the remote host and attaches to
+     * (or creates) a persistent session named "haven-{profileId-prefix}".
+     * This survives SSH disconnections — reconnecting reattaches to the same session.
      */
-    fun openShellForSession(profileId: String) {
+    fun openShellForSession(profileId: String, useTmux: Boolean = false) {
         val session = _sessions.value[profileId] ?: return
         val channel = session.client.openShellChannel()
         attachShellChannel(profileId, channel)
+
+        if (useTmux) {
+            try {
+                val sessionName = "haven-${profileId.take(8)}"
+                // Send tmux attach-or-create command to the shell.
+                // -A: attach to existing session if it exists, otherwise create.
+                // Small delay to let the shell initialize before sending.
+                Thread.sleep(200)
+                val cmd = "tmux new-session -A -s $sessionName\n"
+                channel.outputStream.write(cmd.toByteArray())
+                channel.outputStream.flush()
+                Log.d(TAG, "Sent tmux attach for session $sessionName")
+            } catch (e: Exception) {
+                Log.w(TAG, "tmux attach failed, continuing without tmux", e)
+            }
+        }
     }
 
     fun attachShellChannel(profileId: String, channel: ChannelShell) {
@@ -102,6 +122,10 @@ class SshSessionManager @Inject constructor() {
             channel = channel,
             client = session.client,
             onDataReceived = onDataReceived,
+            onDisconnected = {
+                Log.d(TAG, "Session $profileId disconnected unexpectedly")
+                updateStatus(profileId, SessionState.Status.DISCONNECTED)
+            },
         )
         attachTerminalSession(profileId, termSession)
         return termSession

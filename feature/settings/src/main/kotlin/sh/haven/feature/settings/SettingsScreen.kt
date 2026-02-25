@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ColorLens
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -52,6 +53,7 @@ fun SettingsScreen(
     val biometricEnabled by viewModel.biometricEnabled.collectAsState()
     val fontSize by viewModel.terminalFontSize.collectAsState()
     val theme by viewModel.theme.collectAsState()
+    val tmuxEnabled by viewModel.tmuxEnabled.collectAsState()
     var showFontSizeDialog by remember { mutableStateOf(false) }
     var showThemeDialog by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
@@ -73,6 +75,13 @@ fun SettingsScreen(
                 onCheckedChange = viewModel::setBiometricEnabled,
             )
         }
+        SettingsToggleItem(
+            icon = Icons.Filled.Terminal,
+            title = "tmux session persistence",
+            subtitle = "Maintain shell sessions through disconnections",
+            checked = tmuxEnabled,
+            onCheckedChange = viewModel::setTmuxEnabled,
+        )
         SettingsItem(
             icon = Icons.Filled.TextFields,
             title = "Terminal font size",

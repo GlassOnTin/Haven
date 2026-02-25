@@ -3,6 +3,7 @@ package sh.haven.app.navigation
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
@@ -69,7 +70,8 @@ fun HavenNavHost(
             state = pagerState,
             modifier = Modifier
                 .padding(innerPadding)
-                .consumeWindowInsets(innerPadding),
+                .consumeWindowInsets(innerPadding)
+                .imePadding(),
         ) { page ->
             when (screens[page]) {
                 Screen.Connections -> ConnectionsScreen(

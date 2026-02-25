@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.Tab
@@ -40,6 +39,8 @@ fun TerminalScreen(
 ) {
     val tabs by viewModel.tabs.collectAsState()
     val activeTabIndex by viewModel.activeTabIndex.collectAsState()
+    val ctrlActive by viewModel.ctrlActive.collectAsState()
+    val altActive by viewModel.altActive.collectAsState()
     val view = LocalView.current
 
     // Show/hide keyboard when this tab becomes active/inactive
@@ -66,7 +67,7 @@ fun TerminalScreen(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().imePadding()) {
+    Column(modifier = Modifier.fillMaxSize()) {
         if (tabs.isEmpty()) {
             EmptyTerminalState(fontSize = fontSize)
         } else {
@@ -113,6 +114,10 @@ fun TerminalScreen(
                 KeyboardToolbar(
                     onSendBytes = { bytes -> activeTab.terminalSession.sendToSsh(bytes) },
                     focusRequester = focusRequester,
+                    ctrlActive = ctrlActive,
+                    altActive = altActive,
+                    onToggleCtrl = viewModel::toggleCtrl,
+                    onToggleAlt = viewModel::toggleAlt,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }

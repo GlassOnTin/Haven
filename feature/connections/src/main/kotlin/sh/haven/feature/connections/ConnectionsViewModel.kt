@@ -10,12 +10,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import sh.haven.core.data.db.entities.ConnectionProfile
 import sh.haven.core.data.db.entities.SshKey
+import sh.haven.core.data.preferences.UserPreferencesRepository
 import sh.haven.core.data.repository.ConnectionRepository
 import sh.haven.core.data.repository.SshKeyRepository
 import sh.haven.core.ssh.ConnectionConfig
@@ -31,6 +33,7 @@ class ConnectionsViewModel @Inject constructor(
     private val repository: ConnectionRepository,
     private val sessionManager: SshSessionManager,
     private val sshKeyRepository: SshKeyRepository,
+    private val preferencesRepository: UserPreferencesRepository,
 ) : ViewModel() {
 
     val connections: StateFlow<List<ConnectionProfile>> = repository.observeAll()
@@ -86,7 +89,8 @@ class ConnectionsViewModel @Inject constructor(
                         authMethod = authMethod,
                     )
                     client.connect(config)
-                    sessionManager.openShellForSession(profile.id)
+                    val useTmux = preferencesRepository.tmuxEnabled.first()
+                    sessionManager.openShellForSession(profile.id, useTmux = useTmux)
                 }
                 sessionManager.updateStatus(profile.id, SshSessionManager.SessionState.Status.CONNECTED)
                 repository.markConnected(profile.id)

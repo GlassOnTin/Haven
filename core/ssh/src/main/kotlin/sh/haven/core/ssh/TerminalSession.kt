@@ -22,6 +22,7 @@ class TerminalSession(
     private val channel: ChannelShell,
     private val client: SshClient,
     private val onDataReceived: (ByteArray, Int, Int) -> Unit,
+    private val onDisconnected: (() -> Unit)? = null,
 ) : Closeable {
 
     private val sshInput: InputStream = channel.inputStream
@@ -71,6 +72,10 @@ class TerminalSession(
             }
         } catch (_: Exception) {
             // Channel closed or IO error
+        }
+        if (!closed) {
+            Log.d(TAG, "readLoop ended for $profileId — connection lost")
+            onDisconnected?.invoke()
         }
     }
 

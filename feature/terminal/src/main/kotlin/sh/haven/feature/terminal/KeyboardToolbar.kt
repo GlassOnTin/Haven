@@ -51,11 +51,13 @@ private val KEY_LEFT = "$ESC[D".toByteArray()
 fun KeyboardToolbar(
     onSendBytes: (ByteArray) -> Unit,
     focusRequester: FocusRequester,
+    ctrlActive: Boolean = false,
+    altActive: Boolean = false,
+    onToggleCtrl: () -> Unit = {},
+    onToggleAlt: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var shiftActive by remember { mutableStateOf(false) }
-    var ctrlActive by remember { mutableStateOf(false) }
-    var altActive by remember { mutableStateOf(false) }
     val view = LocalView.current
     val imeVisible = WindowInsets.isImeVisible
 
@@ -105,14 +107,14 @@ fun KeyboardToolbar(
             ToolbarToggleButton(
                 label = "Ctrl",
                 active = ctrlActive,
-                onClick = { ctrlActive = !ctrlActive },
+                onClick = onToggleCtrl,
             )
 
             // Alt (sticky toggle)
             ToolbarToggleButton(
                 label = "Alt",
                 active = altActive,
-                onClick = { altActive = !altActive },
+                onClick = onToggleAlt,
             )
 
             // Arrow keys
@@ -122,10 +124,10 @@ fun KeyboardToolbar(
             ToolbarIconButton(Icons.AutoMirrored.Filled.KeyboardArrowRight, "Right") { onSendBytes(KEY_RIGHT) }
 
             // Common symbols
-            ToolbarTextButton("|") { sendChar('|', ctrlActive, altActive, onSendBytes); ctrlActive = false; altActive = false }
-            ToolbarTextButton("~") { sendChar('~', ctrlActive, altActive, onSendBytes); ctrlActive = false; altActive = false }
-            ToolbarTextButton("/") { sendChar('/', ctrlActive, altActive, onSendBytes); ctrlActive = false; altActive = false }
-            ToolbarTextButton("-") { sendChar('-', ctrlActive, altActive, onSendBytes); ctrlActive = false; altActive = false }
+            ToolbarTextButton("|") { sendChar('|', ctrlActive, altActive, onSendBytes); if (ctrlActive) onToggleCtrl(); if (altActive) onToggleAlt() }
+            ToolbarTextButton("~") { sendChar('~', ctrlActive, altActive, onSendBytes); if (ctrlActive) onToggleCtrl(); if (altActive) onToggleAlt() }
+            ToolbarTextButton("/") { sendChar('/', ctrlActive, altActive, onSendBytes); if (ctrlActive) onToggleCtrl(); if (altActive) onToggleAlt() }
+            ToolbarTextButton("-") { sendChar('-', ctrlActive, altActive, onSendBytes); if (ctrlActive) onToggleCtrl(); if (altActive) onToggleAlt() }
         }
     }
 }

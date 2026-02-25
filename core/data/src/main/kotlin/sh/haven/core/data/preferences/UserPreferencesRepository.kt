@@ -18,6 +18,7 @@ class UserPreferencesRepository @Inject constructor(
     private val biometricEnabledKey = booleanPreferencesKey("biometric_enabled")
     private val terminalFontSizeKey = intPreferencesKey("terminal_font_size")
     private val themeKey = stringPreferencesKey("theme")
+    private val tmuxEnabledKey = booleanPreferencesKey("tmux_enabled")
 
     val biometricEnabled: Flow<Boolean> = dataStore.data.map { prefs ->
         prefs[biometricEnabledKey] ?: false
@@ -25,6 +26,16 @@ class UserPreferencesRepository @Inject constructor(
 
     val terminalFontSize: Flow<Int> = dataStore.data.map { prefs ->
         prefs[terminalFontSizeKey] ?: DEFAULT_FONT_SIZE
+    }
+
+    val tmuxEnabled: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[tmuxEnabledKey] ?: false
+    }
+
+    suspend fun setTmuxEnabled(enabled: Boolean) {
+        dataStore.edit { prefs ->
+            prefs[tmuxEnabledKey] = enabled
+        }
     }
 
     suspend fun setBiometricEnabled(enabled: Boolean) {
