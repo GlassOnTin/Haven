@@ -14,7 +14,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ColorLens
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -70,11 +69,6 @@ fun SettingsScreen(
                 onCheckedChange = viewModel::setBiometricEnabled,
             )
         }
-        SettingsItem(
-            icon = Icons.Filled.Lock,
-            title = "sudo auto-fill",
-            subtitle = "Auto-fill sudo password via biometrics",
-        )
         SettingsItem(
             icon = Icons.Filled.TextFields,
             title = "Terminal font size",
