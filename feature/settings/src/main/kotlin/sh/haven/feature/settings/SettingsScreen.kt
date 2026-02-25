@@ -1,9 +1,14 @@
 package sh.haven.feature.settings
 
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ColorLens
@@ -31,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -45,6 +51,12 @@ fun SettingsScreen(
     val biometricEnabled by viewModel.biometricEnabled.collectAsState()
     val fontSize by viewModel.terminalFontSize.collectAsState()
     var showFontSizeDialog by remember { mutableStateOf(false) }
+    var showAboutDialog by remember { mutableStateOf(false) }
+
+    val context = LocalContext.current
+    val packageInfo = remember {
+        context.packageManager.getPackageInfo(context.packageName, 0)
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(title = { Text("Settings") })
@@ -77,7 +89,25 @@ fun SettingsScreen(
         SettingsItem(
             icon = Icons.Filled.Info,
             title = "About Haven",
-            subtitle = "v0.1.0 — Open source SSH client",
+            subtitle = "v${packageInfo.versionName}",
+            onClick = { showAboutDialog = true },
+        )
+    }
+
+    if (showAboutDialog) {
+        AboutDialog(
+            versionName = packageInfo.versionName ?: "unknown",
+            versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                packageInfo.longVersionCode
+            } else {
+                @Suppress("DEPRECATION")
+                packageInfo.versionCode.toLong()
+            },
+            onDismiss = { showAboutDialog = false },
+            onOpenGitHub = {
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(GITHUB_URL))
+                context.startActivity(intent)
+            },
         )
     }
 
@@ -91,6 +121,54 @@ fun SettingsScreen(
             },
         )
     }
+}
+
+private const val GITHUB_URL = "https://github.com/GlassOnTin/Haven"
+
+@Composable
+private fun AboutDialog(
+    versionName: String,
+    versionCode: Long,
+    onDismiss: () -> Unit,
+    onOpenGitHub: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("About Haven") },
+        text = {
+            Column {
+                Text(
+                    text = "Haven",
+                    style = MaterialTheme.typography.headlineSmall,
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Open source SSH client for Android",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "Version $versionName (build $versionCode)",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text(
+                    text = "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onOpenGitHub) {
+                Text("GitHub")
+            }
+        },
+    )
 }
 
 @Composable
