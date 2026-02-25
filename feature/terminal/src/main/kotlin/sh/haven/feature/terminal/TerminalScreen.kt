@@ -28,12 +28,14 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import org.connectbot.terminal.Terminal
+import sh.haven.core.data.preferences.UserPreferencesRepository
 
 @Composable
 fun TerminalScreen(
     navigateToProfileId: String? = null,
     isActive: Boolean = false,
     terminalModifier: Modifier = Modifier,
+    fontSize: Int = UserPreferencesRepository.DEFAULT_FONT_SIZE,
     viewModel: TerminalViewModel = hiltViewModel(),
 ) {
     val tabs by viewModel.tabs.collectAsState()
@@ -66,7 +68,7 @@ fun TerminalScreen(
 
     Column(modifier = Modifier.fillMaxSize().imePadding()) {
         if (tabs.isEmpty()) {
-            EmptyTerminalState()
+            EmptyTerminalState(fontSize = fontSize)
         } else {
             // Tab row
             if (tabs.size > 1) {
@@ -99,6 +101,7 @@ fun TerminalScreen(
                     Terminal(
                         terminalEmulator = activeTab.emulator,
                         modifier = Modifier.fillMaxSize(),
+                        initialFontSize = fontSize.sp,
                         keyboardEnabled = true,
                         backgroundColor = Color(0xFF1A1A2E),
                         foregroundColor = Color(0xFF00E676),
@@ -118,7 +121,7 @@ fun TerminalScreen(
 }
 
 @Composable
-private fun EmptyTerminalState() {
+private fun EmptyTerminalState(fontSize: Int) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -129,7 +132,7 @@ private fun EmptyTerminalState() {
         Text(
             text = "Connect to a server to start a session.",
             fontFamily = FontFamily.Monospace,
-            fontSize = 14.sp,
+            fontSize = fontSize.sp,
             color = Color(0xFF00E676),
         )
     }

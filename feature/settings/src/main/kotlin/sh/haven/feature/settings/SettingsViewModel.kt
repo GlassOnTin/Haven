@@ -26,9 +26,22 @@ class SettingsViewModel @Inject constructor(
     val biometricEnabled: StateFlow<Boolean> = preferencesRepository.biometricEnabled
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
+    val terminalFontSize: StateFlow<Int> = preferencesRepository.terminalFontSize
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5000),
+            UserPreferencesRepository.DEFAULT_FONT_SIZE,
+        )
+
     fun setBiometricEnabled(enabled: Boolean) {
         viewModelScope.launch {
             preferencesRepository.setBiometricEnabled(enabled)
+        }
+    }
+
+    fun setTerminalFontSize(sizeSp: Int) {
+        viewModelScope.launch {
+            preferencesRepository.setTerminalFontSize(sizeSp)
         }
     }
 }

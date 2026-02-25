@@ -14,6 +14,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
@@ -25,6 +26,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import sh.haven.core.data.preferences.UserPreferencesRepository
 import sh.haven.feature.connections.ConnectionsScreen
 import sh.haven.feature.keys.KeysScreen
 import sh.haven.feature.settings.SettingsScreen
@@ -33,10 +35,14 @@ import sh.haven.feature.terminal.TerminalScreen
 import kotlin.math.abs
 
 @Composable
-fun HavenNavHost() {
+fun HavenNavHost(
+    preferencesRepository: UserPreferencesRepository,
+) {
     val screens = Screen.entries
     val pagerState = rememberPagerState { screens.size }
     val coroutineScope = rememberCoroutineScope()
+    val terminalFontSize by preferencesRepository.terminalFontSize
+        .collectAsState(initial = UserPreferencesRepository.DEFAULT_FONT_SIZE)
 
     // Profile ID to focus when navigating to terminal
     var pendingTerminalProfileId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -78,6 +84,7 @@ fun HavenNavHost() {
                     TerminalScreen(
                         navigateToProfileId = pendingTerminalProfileId,
                         isActive = pagerState.settledPage == Screen.Terminal.ordinal,
+                        fontSize = terminalFontSize,
                         // Terminal composable consumes touch events, blocking pager swipe.
                         // Intercept horizontal drags at Initial pass and forward to pager.
                         terminalModifier = Modifier.pagerSwipeOverride(pagerState, coroutineScope),

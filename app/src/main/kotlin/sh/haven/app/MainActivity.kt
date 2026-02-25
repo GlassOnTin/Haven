@@ -53,7 +53,7 @@ class MainActivity : AppCompatActivity() {
                         onUnlocked = { unlocked = true },
                     )
                 } else {
-                    HavenNavHost()
+                    HavenNavHost(preferencesRepository = preferencesRepository)
                 }
             }
         }
