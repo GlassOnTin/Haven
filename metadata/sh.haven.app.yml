@@ -1,0 +1,34 @@
+Categories:
+  - System
+  - Internet
+
+License: MIT
+
+AuthorName: GlassOnTin
+SourceCode: https://github.com/GlassOnTin/Haven
+IssueTracker: https://github.com/GlassOnTin/Haven/issues
+Changelog: https://github.com/GlassOnTin/Haven/releases
+
+AutoName: Haven SSH Client
+
+Description: |-
+  Haven is an open source SSH and SFTP client for Android.
+
+  Connect to your servers with a full terminal emulator, browse and transfer
+  files over SFTP, and manage your SSH keys — all from your phone.
+
+RepoType: git
+Repo: https://github.com/GlassOnTin/Haven.git
+
+Builds:
+  - versionName: 0.5.6
+    versionCode: 13
+    commit: v0.5.6
+    subdir: app
+    gradle:
+      - yes
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags
+CurrentVersion: 0.5.6
+CurrentVersionCode: 13
