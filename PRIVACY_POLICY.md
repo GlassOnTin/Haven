@@ -31,6 +31,8 @@ Haven does not use any third-party analytics, crash reporting, or advertising SD
 
 Haven is open source software licensed under the MIT License. The source code is available at https://github.com/GlassOnTin/Haven.
 
+If concerned, build it yourself, or ask an AI to build it for you.
+
 ## Contact
 
 For questions about this privacy policy, open an issue at https://github.com/GlassOnTin/Haven/issues.
