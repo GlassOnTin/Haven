@@ -20,6 +20,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -34,6 +35,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -49,7 +51,9 @@ fun SettingsScreen(
 ) {
     val biometricEnabled by viewModel.biometricEnabled.collectAsState()
     val fontSize by viewModel.terminalFontSize.collectAsState()
+    val theme by viewModel.theme.collectAsState()
     var showFontSizeDialog by remember { mutableStateOf(false) }
+    var showThemeDialog by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
@@ -78,7 +82,8 @@ fun SettingsScreen(
         SettingsItem(
             icon = Icons.Filled.ColorLens,
             title = "Theme",
-            subtitle = "System default",
+            subtitle = theme.label,
+            onClick = { showThemeDialog = true },
         )
         SettingsItem(
             icon = Icons.Filled.Info,
@@ -101,6 +106,17 @@ fun SettingsScreen(
             onOpenGitHub = {
                 val intent = Intent(Intent.ACTION_VIEW, Uri.parse(GITHUB_URL))
                 context.startActivity(intent)
+            },
+        )
+    }
+
+    if (showThemeDialog) {
+        ThemeDialog(
+            currentTheme = theme,
+            onDismiss = { showThemeDialog = false },
+            onSelect = { selected ->
+                viewModel.setTheme(selected)
+                showThemeDialog = false
             },
         )
     }
@@ -160,6 +176,41 @@ private fun AboutDialog(
         dismissButton = {
             TextButton(onClick = onOpenGitHub) {
                 Text("GitHub")
+            }
+        },
+    )
+}
+
+@Composable
+private fun ThemeDialog(
+    currentTheme: UserPreferencesRepository.ThemeMode,
+    onDismiss: () -> Unit,
+    onSelect: (UserPreferencesRepository.ThemeMode) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Theme") },
+        text = {
+            Column {
+                UserPreferencesRepository.ThemeMode.entries.forEach { mode ->
+                    ListItem(
+                        headlineContent = { Text(mode.label) },
+                        leadingContent = {
+                            RadioButton(
+                                selected = mode == currentTheme,
+                                onClick = null,
+                            )
+                        },
+                        modifier = Modifier.clickable(role = Role.RadioButton) {
+                            onSelect(mode)
+                        },
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
             }
         },
     )

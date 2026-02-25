@@ -33,6 +33,13 @@ class SettingsViewModel @Inject constructor(
             UserPreferencesRepository.DEFAULT_FONT_SIZE,
         )
 
+    val theme: StateFlow<UserPreferencesRepository.ThemeMode> = preferencesRepository.theme
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5000),
+            UserPreferencesRepository.ThemeMode.SYSTEM,
+        )
+
     fun setBiometricEnabled(enabled: Boolean) {
         viewModelScope.launch {
             preferencesRepository.setBiometricEnabled(enabled)
@@ -42,6 +49,12 @@ class SettingsViewModel @Inject constructor(
     fun setTerminalFontSize(sizeSp: Int) {
         viewModelScope.launch {
             preferencesRepository.setTerminalFontSize(sizeSp)
+        }
+    }
+
+    fun setTheme(mode: UserPreferencesRepository.ThemeMode) {
+        viewModelScope.launch {
+            preferencesRepository.setTheme(mode)
         }
     }
 }

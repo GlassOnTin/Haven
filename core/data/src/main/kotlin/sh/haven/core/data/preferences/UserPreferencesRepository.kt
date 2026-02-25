@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
@@ -16,6 +17,7 @@ class UserPreferencesRepository @Inject constructor(
 ) {
     private val biometricEnabledKey = booleanPreferencesKey("biometric_enabled")
     private val terminalFontSizeKey = intPreferencesKey("terminal_font_size")
+    private val themeKey = stringPreferencesKey("theme")
 
     val biometricEnabled: Flow<Boolean> = dataStore.data.map { prefs ->
         prefs[biometricEnabledKey] ?: false
@@ -31,9 +33,30 @@ class UserPreferencesRepository @Inject constructor(
         }
     }
 
+    val theme: Flow<ThemeMode> = dataStore.data.map { prefs ->
+        ThemeMode.fromString(prefs[themeKey])
+    }
+
     suspend fun setTerminalFontSize(sizeSp: Int) {
         dataStore.edit { prefs ->
             prefs[terminalFontSizeKey] = sizeSp.coerceIn(MIN_FONT_SIZE, MAX_FONT_SIZE)
+        }
+    }
+
+    suspend fun setTheme(mode: ThemeMode) {
+        dataStore.edit { prefs ->
+            prefs[themeKey] = mode.name
+        }
+    }
+
+    enum class ThemeMode(val label: String) {
+        SYSTEM("System default"),
+        LIGHT("Light"),
+        DARK("Dark");
+
+        companion object {
+            fun fromString(value: String?): ThemeMode =
+                entries.find { it.name == value } ?: SYSTEM
         }
     }
 

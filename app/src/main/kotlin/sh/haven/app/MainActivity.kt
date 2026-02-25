@@ -5,6 +5,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -30,7 +31,15 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            HavenTheme {
+            val themeMode by preferencesRepository.theme
+                .collectAsState(initial = UserPreferencesRepository.ThemeMode.SYSTEM)
+            val darkTheme = when (themeMode) {
+                UserPreferencesRepository.ThemeMode.LIGHT -> false
+                UserPreferencesRepository.ThemeMode.DARK -> true
+                UserPreferencesRepository.ThemeMode.SYSTEM -> isSystemInDarkTheme()
+            }
+
+            HavenTheme(darkTheme = darkTheme) {
                 val biometricEnabled by preferencesRepository.biometricEnabled
                     .collectAsState(initial = false)
                 var unlocked by remember { mutableStateOf(false) }
