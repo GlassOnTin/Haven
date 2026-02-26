@@ -1,0 +1,3 @@
+- Selection toolbar with d-pad for precise text selection
+- Independent start/end anchor control via Start/End toggle
+- Copy button and selection mode toggle (block/line)
