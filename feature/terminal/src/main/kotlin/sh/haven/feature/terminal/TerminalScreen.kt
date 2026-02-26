@@ -155,8 +155,10 @@ fun TerminalScreen(
             if (activeTab != null) {
                 val focusRequester = remember { FocusRequester() }
 
-                // Request focus so the soft keyboard appears and Terminal receives key events
-                LaunchedEffect(activeTabIndex) {
+                // Request focus so the soft keyboard appears and Terminal receives key events.
+                // Key on both activeTabIndex and tabs.size so focus returns after
+                // tab switches, new tab creation, and tab closure.
+                LaunchedEffect(activeTabIndex, tabs.size) {
                     focusRequester.requestFocus()
                 }
 
