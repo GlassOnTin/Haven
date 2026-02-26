@@ -229,13 +229,6 @@ class ConnectionsViewModel @Inject constructor(
             _connectingProfileId.value = profile.id
             _error.value = null
 
-            val rpcKey = preferencesRepository.reticulumRpcKey.first()
-            if (rpcKey == null) {
-                _error.value = "Configure Reticulum RPC in Settings first (paste Sideband config)"
-                _connectingProfileId.value = null
-                return@launch
-            }
-
             val sessionId = reticulumSessionManager.registerSession(
                 profileId = profile.id,
                 label = profile.label,
@@ -243,17 +236,15 @@ class ConnectionsViewModel @Inject constructor(
             )
 
             try {
-                val host = preferencesRepository.reticulumHost.first()
-                val port = preferencesRepository.reticulumPort.first()
                 val configDir = File(appContext.filesDir, "reticulum").apply { mkdirs() }.absolutePath
 
                 withContext(Dispatchers.IO) {
                     reticulumSessionManager.connectSession(
                         sessionId = sessionId,
                         configDir = configDir,
-                        rpcKey = rpcKey,
-                        host = host,
-                        port = port,
+                        rpcKey = null,
+                        host = profile.reticulumHost,
+                        port = profile.reticulumPort,
                     )
                 }
 

@@ -28,7 +28,6 @@ android {
 dependencies {
     implementation(project(":core:ui"))
     implementation(project(":core:data"))
-    implementation(project(":core:reticulum"))
     implementation(project(":core:security"))
 
     implementation(libs.hilt.android)

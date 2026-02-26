@@ -176,6 +176,9 @@ fun TerminalScreen(
                     val selectionActive = selectionController?.isSelectionActive == true
                     LaunchedEffect(selectionActive) {
                         onSelectionActiveChanged(selectionActive)
+                        if (selectionActive && selectionController != null) {
+                            expandSelectionToWord(selectionController!!, activeTab.emulator)
+                        }
                     }
 
                     Box(modifier = Modifier.weight(1f).then(terminalModifier)) {

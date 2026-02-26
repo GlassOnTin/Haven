@@ -21,7 +21,7 @@ object DatabaseModule {
             HavenDatabase::class.java,
             "haven.db",
         )
-            .addMigrations(HavenDatabase.MIGRATION_1_2, HavenDatabase.MIGRATION_2_3)
+            .addMigrations(HavenDatabase.MIGRATION_1_2, HavenDatabase.MIGRATION_2_3, HavenDatabase.MIGRATION_3_4)
             .build()
     }
 

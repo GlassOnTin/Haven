@@ -164,7 +164,7 @@ class TerminalSessionTest {
     }
 
     @Test
-    fun `sendToSsh deduplicates identical back-to-back sends`() {
+    fun `sendToSsh preserves repeated single-byte sends`() {
         val outputStream = ByteArrayOutputStream()
         val channel = mockk<ChannelShell>(relaxed = true) {
             every { inputStream } returns ByteArrayInputStream(ByteArray(0))
@@ -182,46 +182,15 @@ class TerminalSessionTest {
             onDataReceived = { _, _, _ -> },
         )
 
-        val testData = "a".toByteArray()
-        session.sendToSsh(testData)
-        session.sendToSsh(testData) // duplicate — should be dropped
-
-        Thread.sleep(200)
-
-        // Only one 'a' should be written
-        assertArrayEquals(testData, outputStream.toByteArray())
-
-        session.close()
-    }
-
-    @Test
-    fun `sendToSsh allows same data after dedup window`() {
-        val outputStream = ByteArrayOutputStream()
-        val channel = mockk<ChannelShell>(relaxed = true) {
-            every { inputStream } returns ByteArrayInputStream(ByteArray(0))
-            every { getOutputStream() } returns outputStream
-            every { isConnected } returns true
+        // Simulate pasting "43339" byte-by-byte (as the emulator delivers it)
+        for (b in "43339".toByteArray()) {
+            session.sendToSsh(byteArrayOf(b))
         }
-        val client = mockk<SshClient>(relaxed = true)
-
-        val session = TerminalSession(
-            sessionId = "test-session",
-            profileId = "test",
-            label = "test@host",
-            channel = channel,
-            client = client,
-            onDataReceived = { _, _, _ -> },
-        )
-
-        val testData = "a".toByteArray()
-        session.sendToSsh(testData)
-        Thread.sleep(60) // exceed 50ms dedup window
-        session.sendToSsh(testData) // should NOT be dropped
 
         Thread.sleep(200)
 
-        // Both 'a's should be written
-        assertArrayEquals("aa".toByteArray(), outputStream.toByteArray())
+        // All characters must be preserved — no dedup
+        assertArrayEquals("43339".toByteArray(), outputStream.toByteArray())
 
         session.close()
     }

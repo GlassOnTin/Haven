@@ -76,6 +76,67 @@ private class AnchorMover(controller: SelectionController) {
     }
 }
 
+/**
+ * Expand a single-character selection to the word (contiguous non-whitespace
+ * token) under the cursor. Called immediately after long-press starts selection.
+ *
+ * Uses reflection to access:
+ * - SelectionManager from the SelectionController (library-internal)
+ * - TerminalSnapshot from the TerminalEmulator (library-internal getSnapshot$lib)
+ */
+internal fun expandSelectionToWord(
+    controller: SelectionController,
+    emulator: org.connectbot.terminal.TerminalEmulator,
+) {
+    try {
+        // Get SelectionManager from controller
+        val mgrField = controller.javaClass.getDeclaredField("\$selectionManager")
+        mgrField.isAccessible = true
+        val mgr = mgrField.get(controller) ?: return
+
+        // Get current selection position
+        val range = mgr.javaClass.getMethod("getSelectionRange").invoke(mgr) ?: return
+        val row = range.javaClass.getMethod("getStartRow").invoke(range) as Int
+        val col = range.javaClass.getMethod("getStartCol").invoke(range) as Int
+
+        // Get snapshot from emulator via reflection (getSnapshot$lib is library-internal)
+        val snapshotFlow = emulator.javaClass.getMethod("getSnapshot\$lib").invoke(emulator)
+        val snapshot = snapshotFlow.javaClass.getMethod("getValue").invoke(snapshotFlow)
+            ?: return
+
+        // Get line text at selection row
+        @Suppress("UNCHECKED_CAST")
+        val lines = snapshot.javaClass.getMethod("getLines").invoke(snapshot) as List<Any>
+        if (row < 0 || row >= lines.size) return
+        val line = lines[row]
+        val text = line.javaClass.getMethod("getText").invoke(line) as String
+        if (col < 0 || col >= text.length) return
+
+        // Don't expand if long-pressed on whitespace
+        if (text[col].isWhitespace()) return
+
+        // Expand to contiguous non-whitespace (selects full tokens: paths, URLs, etc.)
+        var startCol = col
+        while (startCol > 0 && !text[startCol - 1].isWhitespace()) startCol--
+        var endCol = col
+        while (endCol < text.length - 1 && !text[endCol + 1].isWhitespace()) endCol++
+
+        // Update selection anchors if expanded
+        if (startCol != col || endCol != col) {
+            val updateStart = mgr.javaClass.getMethod(
+                "updateSelectionStart", Int::class.java, Int::class.java,
+            )
+            val updateEnd = mgr.javaClass.getMethod(
+                "updateSelectionEnd", Int::class.java, Int::class.java,
+            )
+            updateStart.invoke(mgr, row, startCol)
+            updateEnd.invoke(mgr, row, endCol)
+        }
+    } catch (e: Exception) {
+        Log.d(TAG, "expandSelectionToWord: ${e.message}")
+    }
+}
+
 /** Which selection anchor the d-pad arrows control. */
 private enum class AnchorTarget { START, END }
 

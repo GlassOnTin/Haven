@@ -23,6 +23,64 @@ import javax.inject.Inject
 
 private const val TAG = "TerminalViewModel"
 
+/**
+ * Coalesces rapid single-byte inputs into a batch, then deduplicates only
+ * the exact IME double-fire pattern (buffer == [X, X]).
+ *
+ * Android IMEs often fire both commitText and sendKeyEvent for the same
+ * keystroke, causing onKeyboardInput to be called twice with the same byte.
+ * Both calls happen within a single Handler message, so a posted Runnable
+ * flushes after all input from the current message is processed.
+ *
+ * The IME double-fire signature: exactly 2 identical bytes in the buffer.
+ * Paste "aa" also matches this, but that's a rare edge case compared to
+ * the constant double-fire on every keystroke. Longer paste sequences
+ * (e.g., "aab", "43339") are preserved correctly.
+ *
+ * Multi-byte inputs (toolbar, escape sequences) bypass coalescing.
+ */
+private class InputCoalescer(private val sink: (ByteArray) -> Unit) {
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val buffer = mutableListOf<Byte>()
+
+    private val flushRunnable = Runnable { flush() }
+
+    fun send(data: ByteArray) {
+        if (data.size != 1) {
+            // Multi-byte input (toolbar key combos, etc.) — flush pending then send directly
+            flush()
+            sink(data)
+            return
+        }
+
+        synchronized(buffer) {
+            buffer.add(data[0])
+        }
+
+        // Post flush to run after the current message completes.
+        // Both IME double-fire calls and paste iteration happen within
+        // one message, so the flush sees the complete batch.
+        handler.removeCallbacks(flushRunnable)
+        handler.post(flushRunnable)
+    }
+
+    private fun flush() {
+        handler.removeCallbacks(flushRunnable)
+        val bytes: ByteArray
+        synchronized(buffer) {
+            if (buffer.isEmpty()) return
+            // IME double-fire signature: exactly 2 identical bytes
+            if (buffer.size == 2 && buffer[0] == buffer[1]) {
+                bytes = byteArrayOf(buffer[0])
+            } else {
+                bytes = buffer.toByteArray()
+            }
+            buffer.clear()
+        }
+        sink(bytes)
+    }
+}
+
 data class TerminalTab(
     val sessionId: String,
     val profileId: String,
@@ -155,12 +213,13 @@ class TerminalViewModel @Inject constructor(
                 },
             ) ?: continue
 
+            val coalescer = InputCoalescer { data -> termSession.sendToSsh(data) }
             emulator = TerminalEmulatorFactory.create(
                 initialRows = 24,
                 initialCols = 80,
                 defaultForeground = Color.White,
                 defaultBackground = Color(0xFF1A1A2E),
-                onKeyboardInput = { data -> termSession.sendToSsh(applyModifiers(data)) },
+                onKeyboardInput = { data -> coalescer.send(applyModifiers(data)) },
                 onResize = { dims -> termSession.resize(dims.columns, dims.rows) },
             )
 
@@ -197,12 +256,13 @@ class TerminalViewModel @Inject constructor(
                 },
             ) ?: continue
 
+            val rnsCoalescer = InputCoalescer { data -> rnsSession.sendInput(data) }
             emulator = TerminalEmulatorFactory.create(
                 initialRows = 24,
                 initialCols = 80,
                 defaultForeground = Color.White,
                 defaultBackground = Color(0xFF1A1A2E),
-                onKeyboardInput = { data -> rnsSession.sendInput(applyModifiers(data)) },
+                onKeyboardInput = { data -> rnsCoalescer.send(applyModifiers(data)) },
                 onResize = { dims -> rnsSession.resize(dims.columns, dims.rows) },
             )
 

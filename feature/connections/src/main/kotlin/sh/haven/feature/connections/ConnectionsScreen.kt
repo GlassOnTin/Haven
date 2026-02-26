@@ -283,7 +283,7 @@ private fun ConnectionListItem(
             headlineContent = { Text(profile.label) },
             supportingContent = {
                 if (profile.isReticulum) {
-                    Text("RNS: ${profile.destinationHash?.take(12) ?: ""}...")
+                    Text("RNS: ${profile.destinationHash?.take(12) ?: ""}... via ${profile.reticulumHost}:${profile.reticulumPort}")
                 } else {
                     Text("${profile.username}@${profile.host}:${profile.port}")
                 }

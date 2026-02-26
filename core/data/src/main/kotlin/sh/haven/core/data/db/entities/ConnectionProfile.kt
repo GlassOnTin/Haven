@@ -19,6 +19,8 @@ data class ConnectionProfile(
     val sortOrder: Int = 0,
     val connectionType: String = "SSH",
     val destinationHash: String? = null,
+    val reticulumHost: String = "127.0.0.1",
+    val reticulumPort: Int = 37428,
 ) {
     enum class AuthType {
         PASSWORD,

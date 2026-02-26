@@ -35,6 +35,8 @@ fun ConnectionEditDialog(
     var port by remember { mutableStateOf(existing?.port?.toString() ?: "22") }
     var username by remember { mutableStateOf(existing?.username ?: "") }
     var destinationHash by remember { mutableStateOf(existing?.destinationHash ?: "") }
+    var rnsHost by remember { mutableStateOf(existing?.reticulumHost ?: "127.0.0.1") }
+    var rnsPort by remember { mutableStateOf(existing?.reticulumPort?.toString() ?: "37428") }
 
     val isEdit = existing != null
     val title = if (isEdit) "Edit Connection" else "New Connection"
@@ -116,6 +118,27 @@ fun ConnectionEditDialog(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        OutlinedTextField(
+                            value = rnsHost,
+                            onValueChange = { rnsHost = it },
+                            label = { Text("Gateway Host") },
+                            placeholder = { Text("127.0.0.1") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f),
+                        )
+                        OutlinedTextField(
+                            value = rnsPort,
+                            onValueChange = { rnsPort = it.filter { c -> c.isDigit() } },
+                            label = { Text("Port") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.width(80.dp),
+                        )
+                    }
                 }
             }
         },
@@ -123,7 +146,7 @@ fun ConnectionEditDialog(
             val canSave = if (connectionType == "SSH") {
                 host.isNotBlank() && username.isNotBlank()
             } else {
-                destinationHash.length == 32
+                destinationHash.length == 32 && rnsHost.isNotBlank()
             }
             TextButton(
                 onClick = {
@@ -143,6 +166,7 @@ fun ConnectionEditDialog(
                             destinationHash = null,
                         )
                     } else {
+                        val rnsPortInt = rnsPort.toIntOrNull() ?: 37428
                         (existing ?: ConnectionProfile(
                             label = label,
                             host = "",
@@ -155,6 +179,8 @@ fun ConnectionEditDialog(
                             username = "",
                             connectionType = "RETICULUM",
                             destinationHash = destinationHash.lowercase(),
+                            reticulumHost = rnsHost,
+                            reticulumPort = rnsPortInt,
                         )
                     }
                     onSave(profile)
