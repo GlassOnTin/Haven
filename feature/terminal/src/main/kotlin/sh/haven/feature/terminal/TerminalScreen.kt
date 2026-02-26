@@ -29,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -153,30 +154,30 @@ fun TerminalScreen(
             // Terminal area
             val activeTab = tabs.getOrNull(activeTabIndex)
             if (activeTab != null) {
-                val focusRequester = remember { FocusRequester() }
+                // key() forces Terminal recreation when switching tabs, ensuring
+                // the emulator and keyboard input are bound to the correct session.
+                key(activeTab.sessionId) {
+                    val focusRequester = remember { FocusRequester() }
 
-                // Request focus so the soft keyboard appears and Terminal receives key events.
-                // Key on both activeTabIndex and tabs.size so focus returns after
-                // tab switches, new tab creation, and tab closure.
-                LaunchedEffect(activeTabIndex, tabs.size) {
-                    focusRequester.requestFocus()
-                }
+                    LaunchedEffect(Unit) {
+                        focusRequester.requestFocus()
+                    }
 
-                Box(modifier = Modifier.weight(1f).then(terminalModifier)) {
-                    Terminal(
-                        terminalEmulator = activeTab.emulator,
-                        modifier = Modifier.fillMaxSize(),
-                        initialFontSize = fontSize.sp,
-                        keyboardEnabled = true,
-                        backgroundColor = Color(0xFF1A1A2E),
-                        foregroundColor = Color(0xFF00E676),
-                        focusRequester = focusRequester,
-                    )
-                }
+                    Box(modifier = Modifier.weight(1f).then(terminalModifier)) {
+                        Terminal(
+                            terminalEmulator = activeTab.emulator,
+                            modifier = Modifier.fillMaxSize(),
+                            initialFontSize = fontSize.sp,
+                            keyboardEnabled = true,
+                            backgroundColor = Color(0xFF1A1A2E),
+                            foregroundColor = Color(0xFF00E676),
+                            focusRequester = focusRequester,
+                        )
+                    }
 
-                // Keyboard toolbar
-                KeyboardToolbar(
-                    onSendBytes = { bytes -> activeTab.terminalSession.sendToSsh(bytes) },
+                    // Keyboard toolbar
+                    KeyboardToolbar(
+                        onSendBytes = { bytes -> activeTab.terminalSession.sendToSsh(bytes) },
                     focusRequester = focusRequester,
                     ctrlActive = ctrlActive,
                     altActive = altActive,
@@ -184,6 +185,7 @@ fun TerminalScreen(
                     onToggleAlt = viewModel::toggleAlt,
                     modifier = Modifier.fillMaxWidth(),
                 )
+                }
             }
         }
     }
