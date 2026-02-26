@@ -116,25 +116,31 @@ class TerminalSession(
      * Safe to call from any thread — writes are dispatched to a background thread
      * to avoid NetworkOnMainThreadException.
      *
-     * Includes deduplication: the connectbot Terminal composable wires both an
-     * InputConnection (commitText → onTextInput) and an OnKeyListener (sendKeyEvent
-     * → onKeyEvent) on the ImeInputView. Some Android IMEs fire both paths for the
-     * same keystroke, resulting in duplicate onKeyboardInput callbacks. We drop the
-     * second identical send within [DEDUP_WINDOW_NS].
+     * Includes deduplication for single-byte sends only: the connectbot Terminal
+     * composable wires both an InputConnection (commitText → onTextInput) and an
+     * OnKeyListener (sendKeyEvent → onKeyEvent) on the ImeInputView. Some Android
+     * IMEs fire both paths for the same keystroke, resulting in duplicate
+     * onKeyboardInput callbacks. We drop the second identical single-byte send if
+     * it arrives within [DEDUP_WINDOW_NS]. Multi-byte sends (paste) are never
+     * deduplicated — repeated characters in pasted text are intentional.
      */
     fun sendToSsh(data: ByteArray) {
         if (closed || !channel.isConnected) {
             Log.d(TAG, "sendToSsh: dropping ${data.size} bytes (closed=$closed connected=${channel.isConnected})")
             return
         }
-        val now = System.nanoTime()
-        if (lastSendData?.contentEquals(data) == true &&
-            (now - lastSendNanos) < DEDUP_WINDOW_NS
-        ) {
-            return
+        // Only dedup single-byte sends (individual keystrokes). Multi-byte sends
+        // come from paste or multi-char IME commits and must not be deduplicated.
+        if (data.size == 1) {
+            val now = System.nanoTime()
+            if (lastSendData?.contentEquals(data) == true &&
+                (now - lastSendNanos) < DEDUP_WINDOW_NS
+            ) {
+                return
+            }
+            lastSendData = data.copyOf()
+            lastSendNanos = now
         }
-        lastSendData = data.copyOf()
-        lastSendNanos = now
 
         val copy = data.copyOf()
         try {

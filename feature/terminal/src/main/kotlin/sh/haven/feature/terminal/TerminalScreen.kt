@@ -30,7 +30,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -52,6 +54,7 @@ fun TerminalScreen(
     terminalModifier: Modifier = Modifier,
     fontSize: Int = UserPreferencesRepository.DEFAULT_FONT_SIZE,
     onNavigateToConnections: () -> Unit = {},
+    onSelectionActiveChanged: (Boolean) -> Unit = {},
     viewModel: TerminalViewModel = hiltViewModel(),
 ) {
     val tabs by viewModel.tabs.collectAsState()
@@ -163,6 +166,18 @@ fun TerminalScreen(
                         focusRequester.requestFocus()
                     }
 
+                    var selectionController by remember {
+                        mutableStateOf<org.connectbot.terminal.SelectionController?>(null)
+                    }
+
+                    // Notify parent when selection state changes.
+                    // isSelectionActive is backed by Compose MutableState, so
+                    // this block recomposes when selection starts/ends.
+                    val selectionActive = selectionController?.isSelectionActive == true
+                    LaunchedEffect(selectionActive) {
+                        onSelectionActiveChanged(selectionActive)
+                    }
+
                     Box(modifier = Modifier.weight(1f).then(terminalModifier)) {
                         Terminal(
                             terminalEmulator = activeTab.emulator,
@@ -172,6 +187,7 @@ fun TerminalScreen(
                             backgroundColor = Color(0xFF1A1A2E),
                             foregroundColor = Color(0xFF00E676),
                             focusRequester = focusRequester,
+                            onSelectionControllerAvailable = { selectionController = it },
                         )
                     }
 

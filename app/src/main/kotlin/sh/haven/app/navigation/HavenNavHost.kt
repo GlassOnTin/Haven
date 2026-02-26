@@ -18,6 +18,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -47,6 +48,9 @@ fun HavenNavHost(
 
     // Profile ID to focus when navigating to terminal
     var pendingTerminalProfileId by rememberSaveable { mutableStateOf<String?>(null) }
+
+    // Disable pager swipe while terminal text selection is active
+    var terminalSelectionActive by remember { mutableStateOf(false) }
 
     Scaffold(
         bottomBar = {
@@ -92,9 +96,12 @@ fun HavenNavHost(
                                 pagerState.animateScrollToPage(Screen.Connections.ordinal)
                             }
                         },
+                        onSelectionActiveChanged = { terminalSelectionActive = it },
                         // Terminal composable consumes touch events, blocking pager swipe.
                         // Intercept horizontal drags at Initial pass and forward to pager.
-                        terminalModifier = Modifier.pagerSwipeOverride(pagerState, coroutineScope),
+                        // Disabled while text selection is active so drag extends the selection.
+                        terminalModifier = if (terminalSelectionActive) Modifier
+                            else Modifier.pagerSwipeOverride(pagerState, coroutineScope),
                     )
                     LaunchedEffect(pendingTerminalProfileId) {
                         if (pendingTerminalProfileId != null) {
