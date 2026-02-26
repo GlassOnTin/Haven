@@ -3,7 +3,9 @@ Haven is an open source SSH and SFTP client for Android.
 Connect to your servers with a full terminal emulator, browse and transfer files over SFTP, and manage your SSH keys — all from your phone.
 
 Features:
-- SSH terminal with multi-session tab support
+- SSH terminal with multiple tabs per server
+- Session manager integration (tmux, zellij, screen, byobu)
+- Auto-reconnect with exponential backoff
 - SFTP file browser for uploading and downloading files
 - SSH key generation and management (Ed25519, RSA, ECDSA)
 - Biometric app lock (fingerprint or face)

@@ -1,0 +1,5 @@
+- Multiple terminal tabs per server — open several shells on the same host
+- Tab bar with close buttons and "+" to add new tabs
+- Session manager integration (tmux, zellij, screen, byobu)
+- Auto-reconnect with exponential backoff on connection drop
+- ANSI escape stripping for session manager output

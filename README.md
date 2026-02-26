@@ -6,7 +6,9 @@ Connect to your servers with a full terminal emulator, browse and transfer files
 
 ## Features
 
-- **SSH terminal** with multi-session tab support
+- **SSH terminal** with multiple tabs per server — open several shells on the same host
+- **Session manager integration** — attach to tmux, zellij, screen, or byobu sessions
+- **Auto-reconnect** with exponential backoff when connections drop
 - **SFTP file browser** for uploading and downloading files
 - **SSH key management** — generate and store Ed25519, RSA, and ECDSA keys
 - **Biometric app lock** — fingerprint or face authentication
