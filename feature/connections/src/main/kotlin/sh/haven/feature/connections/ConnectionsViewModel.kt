@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -26,14 +27,22 @@ import sh.haven.core.ssh.SshClient
 import sh.haven.core.ssh.SshConnectionService
 import sh.haven.core.ssh.SessionManager
 import sh.haven.core.ssh.SshSessionManager
+import sh.haven.core.reticulum.ReticulumBridge
+import sh.haven.core.reticulum.ReticulumSessionManager
+import java.io.File
 import java.util.Base64
 import javax.inject.Inject
+
+/** Unified connection status that maps both SSH and Reticulum states. */
+enum class ProfileStatus { CONNECTING, CONNECTED, RECONNECTING, DISCONNECTED, ERROR }
 
 @HiltViewModel
 class ConnectionsViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context,
     private val repository: ConnectionRepository,
     private val sshSessionManager: SshSessionManager,
+    private val reticulumSessionManager: ReticulumSessionManager,
+    private val reticulumBridge: ReticulumBridge,
     private val sshKeyRepository: SshKeyRepository,
     private val preferencesRepository: UserPreferencesRepository,
 ) : ViewModel() {
@@ -46,25 +55,43 @@ class ConnectionsViewModel @Inject constructor(
 
     val sessions: StateFlow<Map<String, SshSessionManager.SessionState>> = sshSessionManager.sessions
 
-    /** Derive profile-level statuses for the connections list UI. */
-    val profileStatuses: StateFlow<Map<String, SshSessionManager.SessionState.Status>> =
-        sshSessionManager.sessions.map { sessionsMap ->
-            sessionsMap.values
-                .groupBy { it.profileId }
-                .mapValues { (_, states) ->
-                    val statuses = states.map { it.status }
-                    when {
-                        SshSessionManager.SessionState.Status.CONNECTED in statuses ->
-                            SshSessionManager.SessionState.Status.CONNECTED
-                        SshSessionManager.SessionState.Status.RECONNECTING in statuses ->
-                            SshSessionManager.SessionState.Status.RECONNECTING
-                        SshSessionManager.SessionState.Status.CONNECTING in statuses ->
-                            SshSessionManager.SessionState.Status.CONNECTING
-                        SshSessionManager.SessionState.Status.ERROR in statuses ->
-                            SshSessionManager.SessionState.Status.ERROR
-                        else -> SshSessionManager.SessionState.Status.DISCONNECTED
-                    }
+    /** Derive profile-level statuses for the connections list UI (merges SSH + Reticulum). */
+    val profileStatuses: StateFlow<Map<String, ProfileStatus>> =
+        combine(
+            sshSessionManager.sessions,
+            reticulumSessionManager.sessions,
+        ) { sshMap, rnsMap ->
+            val result = mutableMapOf<String, ProfileStatus>()
+
+            // SSH statuses
+            sshMap.values.groupBy { it.profileId }.forEach { (profileId, states) ->
+                val statuses = states.map { it.status }
+                result[profileId] = when {
+                    SshSessionManager.SessionState.Status.CONNECTED in statuses -> ProfileStatus.CONNECTED
+                    SshSessionManager.SessionState.Status.RECONNECTING in statuses -> ProfileStatus.RECONNECTING
+                    SshSessionManager.SessionState.Status.CONNECTING in statuses -> ProfileStatus.CONNECTING
+                    SshSessionManager.SessionState.Status.ERROR in statuses -> ProfileStatus.ERROR
+                    else -> ProfileStatus.DISCONNECTED
                 }
+            }
+
+            // Reticulum statuses
+            rnsMap.values.groupBy { it.profileId }.forEach { (profileId, states) ->
+                val statuses = states.map { it.status }
+                val rnsStatus = when {
+                    ReticulumSessionManager.SessionState.Status.CONNECTED in statuses -> ProfileStatus.CONNECTED
+                    ReticulumSessionManager.SessionState.Status.CONNECTING in statuses -> ProfileStatus.CONNECTING
+                    ReticulumSessionManager.SessionState.Status.ERROR in statuses -> ProfileStatus.ERROR
+                    else -> ProfileStatus.DISCONNECTED
+                }
+                // If both exist, prefer the higher-priority one
+                val existing = result[profileId]
+                if (existing == null || rnsStatus.ordinal < existing.ordinal) {
+                    result[profileId] = rnsStatus
+                }
+            }
+
+            result.toMap()
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
     /** The profileId currently being connected (for spinner in UI). */
@@ -106,6 +133,7 @@ class ConnectionsViewModel @Inject constructor(
     fun deleteConnection(id: String) {
         viewModelScope.launch {
             sshSessionManager.removeAllSessionsForProfile(id)
+            reticulumSessionManager.removeAllSessionsForProfile(id)
             repository.delete(id)
         }
     }
@@ -122,6 +150,14 @@ class ConnectionsViewModel @Inject constructor(
     }
 
     fun connect(profile: ConnectionProfile, password: String, keyOnly: Boolean = false) {
+        if (profile.isReticulum) {
+            connectReticulum(profile)
+            return
+        }
+        connectSsh(profile, password, keyOnly)
+    }
+
+    private fun connectSsh(profile: ConnectionProfile, password: String, keyOnly: Boolean) {
         viewModelScope.launch {
             _connectingProfileId.value = profile.id
             _error.value = null
@@ -181,6 +217,56 @@ class ConnectionsViewModel @Inject constructor(
                 } else {
                     _error.value = e.message ?: "Connection failed"
                 }
+            } finally {
+                _connectingProfileId.value = null
+            }
+        }
+    }
+
+    private fun connectReticulum(profile: ConnectionProfile) {
+        val destinationHash = profile.destinationHash ?: return
+        viewModelScope.launch {
+            _connectingProfileId.value = profile.id
+            _error.value = null
+
+            val rpcKey = preferencesRepository.reticulumRpcKey.first()
+            if (rpcKey == null) {
+                _error.value = "Configure Reticulum RPC in Settings first (paste Sideband config)"
+                _connectingProfileId.value = null
+                return@launch
+            }
+
+            val sessionId = reticulumSessionManager.registerSession(
+                profileId = profile.id,
+                label = profile.label,
+                destinationHash = destinationHash,
+            )
+
+            try {
+                val host = preferencesRepository.reticulumHost.first()
+                val port = preferencesRepository.reticulumPort.first()
+                val configDir = File(appContext.filesDir, "reticulum").apply { mkdirs() }.absolutePath
+
+                withContext(Dispatchers.IO) {
+                    reticulumSessionManager.connectSession(
+                        sessionId = sessionId,
+                        configDir = configDir,
+                        rpcKey = rpcKey,
+                        host = host,
+                        port = port,
+                    )
+                }
+
+                repository.markConnected(profile.id)
+                startForegroundServiceIfNeeded()
+                _navigateToTerminal.value = profile.id
+            } catch (e: Exception) {
+                reticulumSessionManager.updateStatus(
+                    sessionId,
+                    ReticulumSessionManager.SessionState.Status.ERROR,
+                )
+                reticulumSessionManager.removeSession(sessionId)
+                _error.value = e.message ?: "Reticulum connection failed"
             } finally {
                 _connectingProfileId.value = null
             }
@@ -296,6 +382,7 @@ class ConnectionsViewModel @Inject constructor(
 
     fun disconnect(profileId: String) {
         sshSessionManager.removeAllSessionsForProfile(profileId)
+        reticulumSessionManager.removeAllSessionsForProfile(profileId)
     }
 
     fun dismissError() {

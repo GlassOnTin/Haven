@@ -28,4 +28,6 @@ include(":feature:connections")
 include(":feature:terminal")
 include(":feature:sftp")
 include(":feature:keys")
+include(":core:reticulum")
+
 include(":feature:settings")

@@ -16,6 +16,7 @@ navigation = "2.9.0"
 core-ktx = "1.17.0"
 activity-compose = "1.10.1"
 ksp = "2.3.6"
+chaquopy = "17.0.0"
 
 [libraries]
 # Compose BOM
@@ -81,3 +82,4 @@ kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+chaquopy = { id = "com.chaquo.python", version.ref = "chaquopy" }

@@ -199,7 +199,7 @@ fun TerminalScreen(
                         )
                     } else {
                         KeyboardToolbar(
-                            onSendBytes = { bytes -> activeTab.terminalSession.sendToSsh(bytes) },
+                            onSendBytes = { bytes -> activeTab.sendInput(bytes) },
                             focusRequester = focusRequester,
                             ctrlActive = ctrlActive,
                             altActive = altActive,

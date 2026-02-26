@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.hilt)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.chaquopy)
 }
 
 android {
@@ -18,6 +19,10 @@ android {
         versionName = "0.7.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        ndk {
+            abiFilters += listOf("arm64-v8a", "x86_64")
+        }
     }
 
     signingConfigs {
@@ -77,6 +82,7 @@ dependencies {
     implementation(project(":core:ssh"))
     implementation(project(":core:security"))
     implementation(project(":core:data"))
+    implementation(project(":core:reticulum"))
 
     implementation(project(":feature:connections"))
     implementation(project(":feature:terminal"))
@@ -106,6 +112,17 @@ dependencies {
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.compose.ui.test)
+}
+
+chaquopy {
+    defaultConfig {
+        version = "3.13"
+
+        pip {
+            install("rns")
+            install("rnsh")
+        }
+    }
 }
 
 kotlin {

@@ -16,7 +16,7 @@ import sh.haven.core.data.db.entities.SshKey
         ConnectionLog::class,
         SshKey::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 abstract class HavenDatabase : RoomDatabase() {
@@ -40,6 +40,13 @@ abstract class HavenDatabase : RoomDatabase() {
                         PRIMARY KEY(`id`)
                     )
                 """.trimIndent())
+            }
+        }
+
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE connection_profiles ADD COLUMN connectionType TEXT NOT NULL DEFAULT 'SSH'")
+                db.execSQL("ALTER TABLE connection_profiles ADD COLUMN destinationHash TEXT")
             }
         }
     }

@@ -9,6 +9,7 @@ import android.content.Intent
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import dagger.hilt.android.AndroidEntryPoint
+import sh.haven.core.reticulum.ReticulumSessionManager
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -17,8 +18,11 @@ class SshConnectionService : Service() {
     @Inject
     lateinit var sessionManager: SshSessionManager
 
+    @Inject
+    lateinit var reticulumSessionManager: ReticulumSessionManager
+
     companion object {
-        const val CHANNEL_ID = "haven_ssh_connection"
+        const val CHANNEL_ID = "haven_connection"
         const val NOTIFICATION_ID = 1
         const val ACTION_DISCONNECT_ALL = "sh.haven.action.DISCONNECT_ALL"
     }
@@ -31,6 +35,7 @@ class SshConnectionService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_DISCONNECT_ALL) {
             sessionManager.disconnectAll()
+            reticulumSessionManager.disconnectAll()
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
             return START_NOT_STICKY
@@ -45,12 +50,17 @@ class SshConnectionService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         sessionManager.disconnectAll()
+        reticulumSessionManager.disconnectAll()
     }
 
     private fun buildNotification(): Notification {
-        val active = sessionManager.activeSessions
-        val count = active.size
-        val labels = active.distinctBy { it.profileId }.joinToString(", ") { it.label }
+        val sshActive = sessionManager.activeSessions
+        val rnsActive = reticulumSessionManager.activeSessions
+        val count = sshActive.size + rnsActive.size
+
+        val sshLabels = sshActive.distinctBy { it.profileId }.map { it.label }
+        val rnsLabels = rnsActive.distinctBy { it.profileId }.map { it.label }
+        val labels = (sshLabels + rnsLabels).joinToString(", ")
 
         val disconnectIntent = Intent(this, SshConnectionService::class.java).apply {
             action = ACTION_DISCONNECT_ALL
@@ -76,10 +86,10 @@ class SshConnectionService : Service() {
     private fun createNotificationChannel() {
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "SSH Connections",
+            "Active Connections",
             NotificationManager.IMPORTANCE_LOW,
         ).apply {
-            description = "Active SSH connection status"
+            description = "Active connection status"
         }
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(channel)

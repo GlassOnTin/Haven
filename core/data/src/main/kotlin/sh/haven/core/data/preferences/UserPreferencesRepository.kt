@@ -19,6 +19,9 @@ class UserPreferencesRepository @Inject constructor(
     private val terminalFontSizeKey = intPreferencesKey("terminal_font_size")
     private val themeKey = stringPreferencesKey("theme")
     private val sessionManagerKey = stringPreferencesKey("session_manager")
+    private val reticulumRpcKeyKey = stringPreferencesKey("reticulum_rpc_key")
+    private val reticulumHostKey = stringPreferencesKey("reticulum_host")
+    private val reticulumPortKey = intPreferencesKey("reticulum_port")
 
     val biometricEnabled: Flow<Boolean> = dataStore.data.map { prefs ->
         prefs[biometricEnabledKey] ?: false
@@ -60,6 +63,30 @@ class UserPreferencesRepository @Inject constructor(
         }
     }
 
+    val reticulumRpcKey: Flow<String?> = dataStore.data.map { prefs ->
+        prefs[reticulumRpcKeyKey]
+    }
+
+    val reticulumHost: Flow<String> = dataStore.data.map { prefs ->
+        prefs[reticulumHostKey] ?: DEFAULT_RETICULUM_HOST
+    }
+
+    val reticulumPort: Flow<Int> = dataStore.data.map { prefs ->
+        prefs[reticulumPortKey] ?: DEFAULT_RETICULUM_PORT
+    }
+
+    val reticulumConfigured: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[reticulumRpcKeyKey] != null
+    }
+
+    suspend fun setReticulumConfig(rpcKey: String, host: String, port: Int) {
+        dataStore.edit { prefs ->
+            prefs[reticulumRpcKeyKey] = rpcKey
+            prefs[reticulumHostKey] = host
+            prefs[reticulumPortKey] = port
+        }
+    }
+
     enum class ThemeMode(val label: String) {
         SYSTEM("System default"),
         LIGHT("Light"),
@@ -92,5 +119,7 @@ class UserPreferencesRepository @Inject constructor(
         const val DEFAULT_FONT_SIZE = 14
         const val MIN_FONT_SIZE = 8
         const val MAX_FONT_SIZE = 32
+        const val DEFAULT_RETICULUM_HOST = "127.0.0.1"
+        const val DEFAULT_RETICULUM_PORT = 37428
     }
 }

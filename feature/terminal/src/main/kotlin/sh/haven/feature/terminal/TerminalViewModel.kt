@@ -18,7 +18,7 @@ import sh.haven.core.ssh.SessionManager
 import sh.haven.core.ssh.SshClient
 import sh.haven.core.ssh.SshSessionManager
 import sh.haven.core.ssh.SshSessionManager.SessionState
-import sh.haven.core.ssh.TerminalSession
+import sh.haven.core.reticulum.ReticulumSessionManager
 import javax.inject.Inject
 
 private const val TAG = "TerminalViewModel"
@@ -27,13 +27,17 @@ data class TerminalTab(
     val sessionId: String,
     val profileId: String,
     val label: String,
+    val transportType: String,
     val emulator: TerminalEmulator,
-    val terminalSession: TerminalSession,
+    val sendInput: (ByteArray) -> Unit,
+    val resize: (Int, Int) -> Unit,
+    val close: () -> Unit,
 )
 
 @HiltViewModel
 class TerminalViewModel @Inject constructor(
     private val sessionManager: SshSessionManager,
+    private val reticulumSessionManager: ReticulumSessionManager,
 ) : ViewModel() {
 
     private val _tabs = MutableStateFlow<List<TerminalTab>>(emptyList())
@@ -62,8 +66,8 @@ class TerminalViewModel @Inject constructor(
 
     /**
      * Apply Ctrl/Alt modifiers to keyboard input, then reset them (one-shot).
-     * Ctrl+letter → char AND 0x1F (e.g. Ctrl+C = 0x03).
-     * Alt+char → ESC prefix.
+     * Ctrl+letter -> char AND 0x1F (e.g. Ctrl+C = 0x03).
+     * Alt+char -> ESC prefix.
      */
     private fun applyModifiers(data: ByteArray): ByteArray {
         val ctrl = _ctrlActive.value
@@ -90,29 +94,43 @@ class TerminalViewModel @Inject constructor(
 
     /**
      * Called by the screen on each composition to sync tabs with session state.
-     * Creates emulator + TerminalSession for new CONNECTED sessions that have
-     * a shell channel but no terminal session yet.
+     * Creates emulator + terminal session for new CONNECTED sessions.
      */
     fun syncSessions() {
-        val sessions = sessionManager.sessions.value
+        val sshSessions = sessionManager.sessions.value
+        val rnsSessions = reticulumSessionManager.sessions.value
 
-        // Find sessions that are connected or reconnecting (keep tabs alive during reconnect)
-        val activeSessionIds = sessions.values
+        // Find SSH sessions that are connected or reconnecting
+        val activeSshIds = sshSessions.values
             .filter {
                 it.status == SessionState.Status.CONNECTED ||
-                it.status == SessionState.Status.RECONNECTING
+                    it.status == SessionState.Status.RECONNECTING
             }
             .map { it.sessionId }
             .toSet()
 
+        // Find Reticulum sessions that are connected
+        val activeRnsIds = rnsSessions.values
+            .filter {
+                it.status == ReticulumSessionManager.SessionState.Status.CONNECTED
+            }
+            .map { it.sessionId }
+            .toSet()
+
+        val allActiveIds = activeSshIds + activeRnsIds
+
         val currentTabs = _tabs.value.toMutableList()
 
-        // Remove tabs for disconnected sessions or sessions that were replaced
-        // (reconnected with a fresh SSH connection — terminalSession is null)
+        // Remove tabs for disconnected sessions
         val hadTabs = currentTabs.isNotEmpty()
         val removed = currentTabs.removeAll { tab ->
-            tab.sessionId !in activeSessionIds ||
-                sessions[tab.sessionId]?.terminalSession == null
+            when (tab.transportType) {
+                "SSH" -> tab.sessionId !in activeSshIds ||
+                    sshSessions[tab.sessionId]?.terminalSession == null
+                "RETICULUM" -> tab.sessionId !in activeRnsIds ||
+                    rnsSessions[tab.sessionId]?.reticulumSession == null
+                else -> true
+            }
         }
         if (removed) {
             trackedSessionIds.retainAll(currentTabs.map { it.sessionId }.toSet())
@@ -121,17 +139,14 @@ class TerminalViewModel @Inject constructor(
             }
         }
 
-        // Create tabs for new sessions ready for terminal
-        for (sessionId in activeSessionIds) {
+        // Create tabs for new SSH sessions
+        for (sessionId in activeSshIds) {
             if (sessionId in trackedSessionIds) continue
             if (!sessionManager.isReadyForTerminal(sessionId)) continue
 
-            val session = sessions[sessionId] ?: continue
-
-            // Generate a tab label — disambiguate when multiple tabs share same profile
+            val session = sshSessions[sessionId] ?: continue
             val tabLabel = generateTabLabel(session.label, session.profileId, currentTabs)
 
-            // Create emulator, then wire TerminalSession to feed it
             lateinit var emulator: TerminalEmulator
             val termSession = sessionManager.createTerminalSession(
                 sessionId = sessionId,
@@ -149,7 +164,6 @@ class TerminalViewModel @Inject constructor(
                 onResize = { dims -> termSession.resize(dims.columns, dims.rows) },
             )
 
-            // Start reader thread now that emulator is wired
             termSession.start()
 
             currentTabs.add(
@@ -157,8 +171,53 @@ class TerminalViewModel @Inject constructor(
                     sessionId = session.sessionId,
                     profileId = session.profileId,
                     label = tabLabel,
+                    transportType = "SSH",
                     emulator = emulator,
-                    terminalSession = termSession,
+                    sendInput = { data -> termSession.sendToSsh(data) },
+                    resize = { cols, rows -> termSession.resize(cols, rows) },
+                    close = { termSession.close() },
+                )
+            )
+            trackedSessionIds.add(session.sessionId)
+        }
+
+        // Create tabs for new Reticulum sessions
+        for (sessionId in activeRnsIds) {
+            if (sessionId in trackedSessionIds) continue
+            if (!reticulumSessionManager.isReadyForTerminal(sessionId)) continue
+
+            val session = rnsSessions[sessionId] ?: continue
+            val tabLabel = generateTabLabel(session.label, session.profileId, currentTabs)
+
+            lateinit var emulator: TerminalEmulator
+            val rnsSession = reticulumSessionManager.createTerminalSession(
+                sessionId = sessionId,
+                onDataReceived = { data, offset, length ->
+                    emulator.writeInput(data, offset, length)
+                },
+            ) ?: continue
+
+            emulator = TerminalEmulatorFactory.create(
+                initialRows = 24,
+                initialCols = 80,
+                defaultForeground = Color.White,
+                defaultBackground = Color(0xFF1A1A2E),
+                onKeyboardInput = { data -> rnsSession.sendInput(applyModifiers(data)) },
+                onResize = { dims -> rnsSession.resize(dims.columns, dims.rows) },
+            )
+
+            rnsSession.start()
+
+            currentTabs.add(
+                TerminalTab(
+                    sessionId = session.sessionId,
+                    profileId = session.profileId,
+                    label = tabLabel,
+                    transportType = "RETICULUM",
+                    emulator = emulator,
+                    sendInput = { data -> rnsSession.sendInput(data) },
+                    resize = { cols, rows -> rnsSession.resize(cols, rows) },
+                    close = { rnsSession.close() },
                 )
             )
             trackedSessionIds.add(session.sessionId)
@@ -207,7 +266,12 @@ class TerminalViewModel @Inject constructor(
     }
 
     fun closeTab(sessionId: String) {
-        sessionManager.removeSession(sessionId)
+        // Check both managers
+        if (sessionManager.sessions.value.containsKey(sessionId)) {
+            sessionManager.removeSession(sessionId)
+        } else {
+            reticulumSessionManager.removeSession(sessionId)
+        }
         trackedSessionIds.remove(sessionId)
         syncSessions()
     }
@@ -215,6 +279,7 @@ class TerminalViewModel @Inject constructor(
     /** Close all sessions for a profile (called from connections disconnect). */
     fun closeSession(profileId: String) {
         sessionManager.removeAllSessionsForProfile(profileId)
+        reticulumSessionManager.removeAllSessionsForProfile(profileId)
         trackedSessionIds.removeAll(
             _tabs.value.filter { it.profileId == profileId }.map { it.sessionId }.toSet()
         )
@@ -236,15 +301,21 @@ class TerminalViewModel @Inject constructor(
     val newTabLoading: StateFlow<Boolean> = _newTabLoading.asStateFlow()
 
     /**
-     * Add a new tab by creating a fresh SSH connection to the same server as the current tab.
+     * Add a new tab by creating a fresh connection to the same server as the current tab.
      */
     fun addTab() {
         val activeTab = _tabs.value.getOrNull(_activeTabIndex.value) ?: return
+
+        if (activeTab.transportType == "RETICULUM") {
+            addReticulumTab(activeTab)
+            return
+        }
+
+        // SSH tab — existing logic
         val profileId = activeTab.profileId
         val configPair = sessionManager.getConnectionConfigForProfile(profileId) ?: return
         val (config, sshSessionMgr) = configPair
 
-        // Get label from existing session
         val label = activeTab.label.replace(Regex(" \\(\\d+\\)$"), "")
 
         viewModelScope.launch {
@@ -258,7 +329,6 @@ class TerminalViewModel @Inject constructor(
                 }
                 sessionManager.storeConnectionConfig(sessionId, config, sshSessionMgr)
 
-                // Check for session manager sessions
                 val listCmd = sshSessionMgr.listCommand
                 if (listCmd != null) {
                     val existingSessions = withContext(Dispatchers.IO) {
@@ -283,10 +353,46 @@ class TerminalViewModel @Inject constructor(
                     }
                 }
 
-                // No session manager or no existing sessions — proceed directly
-                finishNewTab(sessionId)
+                finishNewSshTab(sessionId)
             } catch (e: Exception) {
                 Log.e(TAG, "addTab failed", e)
+            } finally {
+                _newTabLoading.value = false
+            }
+        }
+    }
+
+    /**
+     * Add a new Reticulum tab to the same destination as the current tab.
+     */
+    private fun addReticulumTab(activeTab: TerminalTab) {
+        val profileId = activeTab.profileId
+        val rnsSession = reticulumSessionManager.sessions.value.values
+            .firstOrNull { it.profileId == profileId }
+            ?: return
+        val label = activeTab.label.replace(Regex(" \\(\\d+\\)$"), "")
+
+        viewModelScope.launch {
+            _newTabLoading.value = true
+            try {
+                val sessionId = reticulumSessionManager.registerSession(
+                    profileId = profileId,
+                    label = label,
+                    destinationHash = rnsSession.destinationHash,
+                )
+                withContext(Dispatchers.IO) {
+                    reticulumSessionManager.connectSession(
+                        sessionId = sessionId,
+                        configDir = "", // Already initialised
+                        rpcKey = null,
+                        host = "",
+                        port = 0,
+                    )
+                }
+                syncSessions()
+                selectTabBySessionId(sessionId)
+            } catch (e: Exception) {
+                Log.e(TAG, "addReticulumTab failed", e)
             } finally {
                 _newTabLoading.value = false
             }
@@ -301,7 +407,7 @@ class TerminalViewModel @Inject constructor(
                 if (sessionName != null) {
                     sessionManager.setChosenSessionName(sessionId, sessionName)
                 }
-                finishNewTab(sessionId)
+                finishNewSshTab(sessionId)
             } catch (e: Exception) {
                 Log.e(TAG, "onNewTabSessionSelected failed", e)
                 sessionManager.removeSession(sessionId)
@@ -317,13 +423,12 @@ class TerminalViewModel @Inject constructor(
         sessionManager.removeSession(sel.sessionId)
     }
 
-    private suspend fun finishNewTab(sessionId: String) {
+    private suspend fun finishNewSshTab(sessionId: String) {
         withContext(Dispatchers.IO) {
             sessionManager.openShellForSession(sessionId)
         }
         sessionManager.updateStatus(sessionId, SessionState.Status.CONNECTED)
         syncSessions()
-        // Select the new tab
         selectTabBySessionId(sessionId)
     }
 }

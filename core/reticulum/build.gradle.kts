@@ -1,13 +1,12 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.hilt)
     alias(libs.plugins.ksp)
 }
 
 android {
-    namespace = "sh.haven.feature.settings"
+    namespace = "sh.haven.core.reticulum"
     compileSdk = 36
 
     defaultConfig {
@@ -18,23 +17,15 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-
-
-    buildFeatures {
-        compose = true
-    }
 }
 
 dependencies {
-    implementation(project(":core:ui"))
-    implementation(project(":core:data"))
-    implementation(project(":core:reticulum"))
-    implementation(project(":core:security"))
-
+    implementation(libs.coroutines.core)
+    implementation(libs.coroutines.android)
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
-    implementation(libs.hilt.navigation.compose)
-    implementation(libs.lifecycle.viewmodel)
+
+    testImplementation(libs.junit)
 }
 
 kotlin {

@@ -17,9 +17,14 @@ data class ConnectionProfile(
     val colorTag: Int = 0,
     val lastConnected: Long? = null,
     val sortOrder: Int = 0,
+    val connectionType: String = "SSH",
+    val destinationHash: String? = null,
 ) {
     enum class AuthType {
         PASSWORD,
         KEY,
     }
+
+    val isSsh: Boolean get() = connectionType == "SSH"
+    val isReticulum: Boolean get() = connectionType == "RETICULUM"
 }

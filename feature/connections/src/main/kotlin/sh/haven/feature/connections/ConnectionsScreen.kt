@@ -61,7 +61,6 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import sh.haven.core.data.db.entities.ConnectionProfile
-import sh.haven.core.ssh.SshSessionManager.SessionState
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -240,8 +239,10 @@ fun ConnectionsScreen(
                             isConnecting = connectingProfileId == profile.id,
                             hasKeys = sshKeys.isNotEmpty(),
                             onTap = {
-                                if (profileStatus == SessionState.Status.CONNECTED) {
+                                if (profileStatus == ProfileStatus.CONNECTED) {
                                     onNavigateToTerminal(profile.id)
+                                } else if (profile.isReticulum) {
+                                    viewModel.connect(profile, "")
                                 } else if (sshKeys.isNotEmpty()) {
                                     viewModel.connectWithKey(profile)
                                 } else {
@@ -265,7 +266,7 @@ fun ConnectionsScreen(
 @Composable
 private fun ConnectionListItem(
     profile: ConnectionProfile,
-    profileStatus: SessionState.Status?,
+    profileStatus: ProfileStatus?,
     isConnecting: Boolean,
     hasKeys: Boolean,
     onTap: () -> Unit,
@@ -281,19 +282,23 @@ private fun ConnectionListItem(
         ListItem(
             headlineContent = { Text(profile.label) },
             supportingContent = {
-                Text("${profile.username}@${profile.host}:${profile.port}")
+                if (profile.isReticulum) {
+                    Text("RNS: ${profile.destinationHash?.take(12) ?: ""}...")
+                } else {
+                    Text("${profile.username}@${profile.host}:${profile.port}")
+                }
             },
             leadingContent = {
                 when {
                     isConnecting -> CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                    profileStatus == SessionState.Status.RECONNECTING -> CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 2.dp)
-                    profileStatus == SessionState.Status.CONNECTED -> Icon(
+                    profileStatus == ProfileStatus.RECONNECTING -> CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 2.dp)
+                    profileStatus == ProfileStatus.CONNECTED -> Icon(
                         Icons.Filled.Circle,
                         contentDescription = "Connected",
                         tint = Color(0xFF4CAF50),
                         modifier = Modifier.size(12.dp),
                     )
-                    profileStatus == SessionState.Status.ERROR -> Icon(
+                    profileStatus == ProfileStatus.ERROR -> Icon(
                         Icons.Filled.Circle,
                         contentDescription = "Error",
                         tint = Color(0xFFF44336),
@@ -322,21 +327,21 @@ private fun ConnectionListItem(
                 leadingIcon = { Icon(Icons.Filled.Edit, null) },
                 onClick = { showMenu = false; onEdit() },
             )
-            if (profileStatus != SessionState.Status.CONNECTED) {
+            if (profile.isSsh && profileStatus != ProfileStatus.CONNECTED) {
                 DropdownMenuItem(
                     text = { Text("Connect with password") },
                     leadingIcon = { Icon(Icons.Filled.Password, null) },
                     onClick = { showMenu = false; onConnectWithPassword() },
                 )
             }
-            if (profileStatus == SessionState.Status.CONNECTED) {
+            if (profileStatus == ProfileStatus.CONNECTED) {
                 DropdownMenuItem(
                     text = { Text("Disconnect") },
                     leadingIcon = { Icon(Icons.Filled.LinkOff, null) },
                     onClick = { showMenu = false; onDisconnect() },
                 )
             }
-            if (hasKeys) {
+            if (profile.isSsh && hasKeys) {
                 DropdownMenuItem(
                     text = { Text("Deploy SSH Key") },
                     leadingIcon = { Icon(Icons.Filled.VpnKey, null) },

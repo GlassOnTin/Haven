@@ -26,6 +26,7 @@ android {
 
 dependencies {
     api(libs.jsch)
+    implementation(project(":core:reticulum"))
     implementation(libs.bouncycastle)
     implementation(libs.coroutines.core)
     implementation(libs.coroutines.android)
