@@ -191,16 +191,23 @@ fun TerminalScreen(
                         )
                     }
 
-                    // Keyboard toolbar
-                    KeyboardToolbar(
-                        onSendBytes = { bytes -> activeTab.terminalSession.sendToSsh(bytes) },
-                    focusRequester = focusRequester,
-                    ctrlActive = ctrlActive,
-                    altActive = altActive,
-                    onToggleCtrl = viewModel::toggleCtrl,
-                    onToggleAlt = viewModel::toggleAlt,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                    // Show selection toolbar when selecting, keyboard toolbar otherwise
+                    if (selectionActive && selectionController != null) {
+                        SelectionToolbar(
+                            controller = selectionController!!,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    } else {
+                        KeyboardToolbar(
+                            onSendBytes = { bytes -> activeTab.terminalSession.sendToSsh(bytes) },
+                            focusRequester = focusRequester,
+                            ctrlActive = ctrlActive,
+                            altActive = altActive,
+                            onToggleCtrl = viewModel::toggleCtrl,
+                            onToggleAlt = viewModel::toggleAlt,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
                 }
             }
         }

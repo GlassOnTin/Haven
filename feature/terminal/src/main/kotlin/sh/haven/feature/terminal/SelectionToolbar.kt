@@ -1,0 +1,184 @@
+package sh.haven.feature.terminal
+
+import android.util.Log
+import android.widget.Toast
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import org.connectbot.terminal.SelectionController
+
+private const val TAG = "SelectionToolbar"
+
+/**
+ * Reflective helper for moving individual selection anchors.
+ *
+ * The connectbot termlib library marks SelectionManager and SelectionRange as
+ * `internal`, so we can't reference them at compile time. The anonymous
+ * SelectionController implementation captures the SelectionManager in a field
+ * named `$selectionManager`. We use reflection to read the current selection
+ * range and call updateSelectionStart / updateSelectionEnd independently.
+ */
+private class AnchorMover(controller: SelectionController) {
+    private val manager: Any? = try {
+        val field = controller.javaClass.getDeclaredField("\$selectionManager")
+        field.isAccessible = true
+        field.get(controller)
+    } catch (e: Exception) {
+        Log.d(TAG, "Could not extract SelectionManager: ${e.message}")
+        null
+    }
+
+    val available: Boolean = manager != null
+
+    fun moveStart(dCol: Int, dRow: Int) = moveAnchorInternal("Start", dCol, dRow)
+    fun moveEnd(dCol: Int, dRow: Int) = moveAnchorInternal("End", dCol, dRow)
+
+    private fun moveAnchorInternal(which: String, dCol: Int, dRow: Int) {
+        val mgr = manager ?: return
+        try {
+            val rangeGetter = mgr.javaClass.getMethod("getSelectionRange")
+            val range = rangeGetter.invoke(mgr) ?: return
+            val row = range.javaClass.getMethod("get${which}Row").invoke(range) as Int
+            val col = range.javaClass.getMethod("get${which}Col").invoke(range) as Int
+            val update = mgr.javaClass.getMethod("updateSelection$which", Int::class.java, Int::class.java)
+            update.invoke(mgr, row + dRow, col + dCol)
+        } catch (e: Exception) {
+            Log.d(TAG, "AnchorMover.move$which failed: ${e.message}")
+        }
+    }
+}
+
+/** Which selection anchor the d-pad arrows control. */
+private enum class AnchorTarget { START, END }
+
+@Composable
+fun SelectionToolbar(
+    controller: SelectionController,
+    modifier: Modifier = Modifier,
+) {
+    val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
+    val anchorMover = remember(controller) { AnchorMover(controller) }
+    var anchorTarget by remember { mutableStateOf(AnchorTarget.END) }
+
+    Surface(
+        tonalElevation = 2.dp,
+        modifier = modifier,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            // Copy
+            SelectionIconButton(Icons.Filled.ContentCopy, "Copy") {
+                val text = controller.copySelection()
+                if (!text.isNullOrEmpty()) {
+                    clipboardManager.setText(AnnotatedString(text))
+                    Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
+                }
+                controller.clearSelection()
+            }
+
+            // Anchor target toggle: Start / End
+            if (anchorMover.available) {
+                SelectionToggleButton(
+                    label = if (anchorTarget == AnchorTarget.START) "Start" else "End",
+                    active = anchorTarget == AnchorTarget.START,
+                    onClick = {
+                        anchorTarget = if (anchorTarget == AnchorTarget.END)
+                            AnchorTarget.START else AnchorTarget.END
+                    },
+                )
+            }
+
+            // D-pad arrows
+            SelectionIconButton(Icons.Filled.KeyboardArrowUp, "Up") {
+                moveAnchor(anchorMover, anchorTarget, 0, -1)
+            }
+            SelectionIconButton(Icons.Filled.KeyboardArrowDown, "Down") {
+                moveAnchor(anchorMover, anchorTarget, 0, 1)
+            }
+            SelectionIconButton(Icons.AutoMirrored.Filled.KeyboardArrowLeft, "Left") {
+                moveAnchor(anchorMover, anchorTarget, -1, 0)
+            }
+            SelectionIconButton(Icons.AutoMirrored.Filled.KeyboardArrowRight, "Right") {
+                moveAnchor(anchorMover, anchorTarget, 1, 0)
+            }
+
+            // Dismiss selection
+            SelectionIconButton(Icons.Filled.Close, "Cancel") {
+                controller.clearSelection()
+            }
+        }
+    }
+}
+
+private fun moveAnchor(
+    mover: AnchorMover,
+    target: AnchorTarget,
+    dCol: Int,
+    dRow: Int,
+) {
+    if (target == AnchorTarget.START) {
+        mover.moveStart(dCol, dRow)
+    } else {
+        mover.moveEnd(dCol, dRow)
+    }
+}
+
+@Composable
+private fun SelectionToggleButton(label: String, active: Boolean, onClick: () -> Unit) {
+    FilledTonalButton(
+        onClick = onClick,
+        modifier = Modifier.padding(horizontal = 2.dp),
+        colors = if (active) {
+            ButtonDefaults.filledTonalButtonColors(
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+            )
+        } else {
+            ButtonDefaults.filledTonalButtonColors()
+        },
+    ) {
+        Text(label, fontSize = 12.sp)
+    }
+}
+
+@Composable
+private fun SelectionIconButton(icon: ImageVector, description: String, onClick: () -> Unit) {
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier.size(36.dp),
+    ) {
+        Icon(icon, contentDescription = description, modifier = Modifier.size(20.dp))
+    }
+}
