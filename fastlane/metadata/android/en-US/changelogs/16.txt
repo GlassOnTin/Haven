@@ -1,0 +1,2 @@
+- Fix paste dropping repeated characters (e.g. "ll" in "hello")
+- Disable page swipe gesture during terminal text selection
