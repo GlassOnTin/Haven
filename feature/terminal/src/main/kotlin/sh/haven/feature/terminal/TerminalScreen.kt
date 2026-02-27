@@ -1,8 +1,10 @@
 package sh.haven.feature.terminal
 
 import android.app.Activity
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -21,6 +23,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
@@ -47,6 +50,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import org.connectbot.terminal.Terminal
 import sh.haven.core.data.preferences.UserPreferencesRepository
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TerminalScreen(
     navigateToProfileId: String? = null,
@@ -64,6 +68,7 @@ fun TerminalScreen(
     val navigateToConnections by viewModel.navigateToConnections.collectAsState()
     val newTabSessionPicker by viewModel.newTabSessionPicker.collectAsState()
     val newTabLoading by viewModel.newTabLoading.collectAsState()
+    var renamingTab by remember { mutableStateOf<TerminalTab?>(null) }
     val view = LocalView.current
 
     LaunchedEffect(navigateToConnections) {
@@ -110,6 +115,17 @@ fun TerminalScreen(
         )
     }
 
+    renamingTab?.let { tab ->
+        RenameTabDialog(
+            currentLabel = tab.label,
+            onDismiss = { renamingTab = null },
+            onRename = { newLabel ->
+                viewModel.renameTab(tab.sessionId, newLabel)
+                renamingTab = null
+            },
+        )
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
         if (tabs.isEmpty()) {
             EmptyTerminalState(fontSize = fontSize)
@@ -123,9 +139,15 @@ fun TerminalScreen(
                 tabs.forEachIndexed { index, tab ->
                     Tab(
                         selected = activeTabIndex == index,
-                        onClick = { viewModel.selectTab(index) },
+                        onClick = {},
                         text = {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.combinedClickable(
+                                    onClick = { viewModel.selectTab(index) },
+                                    onLongClick = { renamingTab = tab },
+                                ),
+                            ) {
                                 Text(tab.label, maxLines = 1)
                                 IconButton(
                                     onClick = { viewModel.closeTab(tab.sessionId) },
@@ -289,6 +311,41 @@ private fun NewTabSessionPickerDialog(
             }
         },
         confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        },
+    )
+}
+
+@Composable
+private fun RenameTabDialog(
+    currentLabel: String,
+    onDismiss: () -> Unit,
+    onRename: (String) -> Unit,
+) {
+    var label by remember { mutableStateOf(currentLabel) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Rename Tab") },
+        text = {
+            OutlinedTextField(
+                value = label,
+                onValueChange = { label = it },
+                label = { Text("Label") },
+                singleLine = true,
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onRename(label) },
+                enabled = label.isNotBlank(),
+            ) {
+                Text("Rename")
+            }
+        },
+        dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text("Cancel")
             }

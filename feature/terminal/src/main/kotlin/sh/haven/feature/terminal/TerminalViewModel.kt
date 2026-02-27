@@ -331,6 +331,12 @@ class TerminalViewModel @Inject constructor(
         }
     }
 
+    fun renameTab(sessionId: String, newLabel: String) {
+        _tabs.value = _tabs.value.map { tab ->
+            if (tab.sessionId == sessionId) tab.copy(label = newLabel) else tab
+        }
+    }
+
     fun closeTab(sessionId: String) {
         // Check both managers
         if (sessionManager.sessions.value.containsKey(sessionId)) {
