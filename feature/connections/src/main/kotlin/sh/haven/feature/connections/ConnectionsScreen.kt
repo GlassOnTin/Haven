@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Cable
 import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DriveFileRenameOutline
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.Password
@@ -177,8 +178,10 @@ fun ConnectionsScreen(
             managerLabel = selection.managerLabel,
             sessionNames = selection.sessionNames,
             canKill = selection.manager.killCommand != null,
+            canRename = selection.manager.renameCommand != null,
             onSelect = { name -> viewModel.onSessionSelected(selection.sessionId, name) },
             onKill = { name -> viewModel.killRemoteSession(name) },
+            onRename = { old, new -> viewModel.renameRemoteSession(old, new) },
             onNewSession = { viewModel.onSessionSelected(selection.sessionId, null) },
             onDismiss = { viewModel.dismissSessionPicker() },
         )
@@ -259,6 +262,9 @@ fun ConnectionsScreen(
                                     connectingProfile = profile
                                 }
                             },
+                            onRename = { newLabel ->
+                                viewModel.saveConnection(profile.copy(label = newLabel))
+                            },
                             onEdit = { editingProfile = profile },
                             onDelete = { viewModel.deleteConnection(profile.id) },
                             onDisconnect = { viewModel.disconnect(profile.id) },
@@ -280,6 +286,7 @@ private fun ConnectionListItem(
     isConnecting: Boolean,
     hasKeys: Boolean,
     onTap: () -> Unit,
+    onRename: (String) -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onDisconnect: () -> Unit,
@@ -287,6 +294,18 @@ private fun ConnectionListItem(
     onConnectWithPassword: () -> Unit,
 ) {
     var showMenu by remember { mutableStateOf(false) }
+    var showRenameDialog by remember { mutableStateOf(false) }
+
+    if (showRenameDialog) {
+        RenameDialog(
+            currentLabel = profile.label,
+            onDismiss = { showRenameDialog = false },
+            onRename = { newLabel ->
+                onRename(newLabel)
+                showRenameDialog = false
+            },
+        )
+    }
 
     Box {
         ListItem(
@@ -332,6 +351,11 @@ private fun ConnectionListItem(
             expanded = showMenu,
             onDismissRequest = { showMenu = false },
         ) {
+            DropdownMenuItem(
+                text = { Text("Rename") },
+                leadingIcon = { Icon(Icons.Filled.DriveFileRenameOutline, null) },
+                onClick = { showMenu = false; showRenameDialog = true },
+            )
             DropdownMenuItem(
                 text = { Text("Edit") },
                 leadingIcon = { Icon(Icons.Filled.Edit, null) },
@@ -400,11 +424,26 @@ private fun SessionPickerDialog(
     managerLabel: String,
     sessionNames: List<String>,
     canKill: Boolean = false,
+    canRename: Boolean = false,
     onSelect: (String) -> Unit,
     onKill: (String) -> Unit = {},
+    onRename: (old: String, new: String) -> Unit = { _, _ -> },
     onNewSession: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    var renamingSession by remember { mutableStateOf<String?>(null) }
+
+    renamingSession?.let { name ->
+        RenameDialog(
+            currentLabel = name,
+            onDismiss = { renamingSession = null },
+            onRename = { newName ->
+                onRename(name, newName)
+                renamingSession = null
+            },
+        )
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("$managerLabel sessions") },
@@ -413,17 +452,27 @@ private fun SessionPickerDialog(
                 sessionNames.forEach { name ->
                     ListItem(
                         headlineContent = { Text(name) },
-                        trailingContent = if (canKill) {
-                            {
-                                IconButton(onClick = { onKill(name) }) {
-                                    Icon(
-                                        Icons.Filled.Delete,
-                                        contentDescription = "Kill session",
-                                        tint = MaterialTheme.colorScheme.error,
-                                    )
+                        trailingContent = {
+                            Row {
+                                if (canRename) {
+                                    IconButton(onClick = { renamingSession = name }) {
+                                        Icon(
+                                            Icons.Filled.DriveFileRenameOutline,
+                                            contentDescription = "Rename session",
+                                        )
+                                    }
+                                }
+                                if (canKill) {
+                                    IconButton(onClick = { onKill(name) }) {
+                                        Icon(
+                                            Icons.Filled.Delete,
+                                            contentDescription = "Kill session",
+                                            tint = MaterialTheme.colorScheme.error,
+                                        )
+                                    }
                                 }
                             }
-                        } else null,
+                        },
                         modifier = Modifier.clickable { onSelect(name) },
                     )
                 }
@@ -447,6 +496,42 @@ private fun SessionPickerDialog(
             }
         },
         confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        },
+    )
+}
+
+@Composable
+private fun RenameDialog(
+    currentLabel: String,
+    onDismiss: () -> Unit,
+    onRename: (String) -> Unit,
+) {
+    var label by remember { mutableStateOf(currentLabel) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Rename Connection") },
+        text = {
+            OutlinedTextField(
+                value = label,
+                onValueChange = { label = it },
+                label = { Text("Label") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onRename(label) },
+                enabled = label.isNotBlank(),
+            ) {
+                Text("Rename")
+            }
+        },
+        dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text("Cancel")
             }

@@ -1,10 +1,8 @@
 package sh.haven.feature.terminal
 
 import android.app.Activity
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,6 +15,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DriveFileRenameOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -50,7 +50,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import org.connectbot.terminal.Terminal
 import sh.haven.core.data.preferences.UserPreferencesRepository
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TerminalScreen(
     navigateToProfileId: String? = null,
@@ -68,7 +67,6 @@ fun TerminalScreen(
     val navigateToConnections by viewModel.navigateToConnections.collectAsState()
     val newTabSessionPicker by viewModel.newTabSessionPicker.collectAsState()
     val newTabLoading by viewModel.newTabLoading.collectAsState()
-    var renamingTab by remember { mutableStateOf<TerminalTab?>(null) }
     val view = LocalView.current
 
     LaunchedEffect(navigateToConnections) {
@@ -108,21 +106,12 @@ fun TerminalScreen(
             managerLabel = selection.managerLabel,
             sessionNames = selection.sessionNames,
             canKill = selection.manager.killCommand != null,
+            canRename = selection.manager.renameCommand != null,
             onSelect = { name -> viewModel.onNewTabSessionSelected(selection.sessionId, name) },
             onKill = { name -> viewModel.killRemoteSession(name) },
+            onRename = { old, new -> viewModel.renameRemoteSession(old, new) },
             onNewSession = { viewModel.onNewTabSessionSelected(selection.sessionId, null) },
             onDismiss = { viewModel.dismissNewTabSessionPicker() },
-        )
-    }
-
-    renamingTab?.let { tab ->
-        RenameTabDialog(
-            currentLabel = tab.label,
-            onDismiss = { renamingTab = null },
-            onRename = { newLabel ->
-                viewModel.renameTab(tab.sessionId, newLabel)
-                renamingTab = null
-            },
         )
     }
 
@@ -139,15 +128,9 @@ fun TerminalScreen(
                 tabs.forEachIndexed { index, tab ->
                     Tab(
                         selected = activeTabIndex == index,
-                        onClick = {},
+                        onClick = { viewModel.selectTab(index) },
                         text = {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.combinedClickable(
-                                    onClick = { viewModel.selectTab(index) },
-                                    onLongClick = { renamingTab = tab },
-                                ),
-                            ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(tab.label, maxLines = 1)
                                 IconButton(
                                     onClick = { viewModel.closeTab(tab.sessionId) },
@@ -264,11 +247,26 @@ private fun NewTabSessionPickerDialog(
     managerLabel: String,
     sessionNames: List<String>,
     canKill: Boolean = false,
+    canRename: Boolean = false,
     onSelect: (String) -> Unit,
     onKill: (String) -> Unit = {},
+    onRename: (old: String, new: String) -> Unit = { _, _ -> },
     onNewSession: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    var renamingSession by remember { mutableStateOf<String?>(null) }
+
+    renamingSession?.let { name ->
+        RenameSessionDialog(
+            currentLabel = name,
+            onDismiss = { renamingSession = null },
+            onRename = { newName ->
+                onRename(name, newName)
+                renamingSession = null
+            },
+        )
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("$managerLabel sessions") },
@@ -277,17 +275,27 @@ private fun NewTabSessionPickerDialog(
                 sessionNames.forEach { name ->
                     ListItem(
                         headlineContent = { Text(name) },
-                        trailingContent = if (canKill) {
-                            {
-                                IconButton(onClick = { onKill(name) }) {
-                                    Icon(
-                                        Icons.Filled.Close,
-                                        contentDescription = "Kill session",
-                                        tint = MaterialTheme.colorScheme.error,
-                                    )
+                        trailingContent = {
+                            Row {
+                                if (canRename) {
+                                    IconButton(onClick = { renamingSession = name }) {
+                                        Icon(
+                                            Icons.Filled.DriveFileRenameOutline,
+                                            contentDescription = "Rename session",
+                                        )
+                                    }
+                                }
+                                if (canKill) {
+                                    IconButton(onClick = { onKill(name) }) {
+                                        Icon(
+                                            Icons.Filled.Delete,
+                                            contentDescription = "Kill session",
+                                            tint = MaterialTheme.colorScheme.error,
+                                        )
+                                    }
                                 }
                             }
-                        } else null,
+                        },
                         modifier = Modifier.clickable { onSelect(name) },
                     )
                 }
@@ -319,7 +327,7 @@ private fun NewTabSessionPickerDialog(
 }
 
 @Composable
-private fun RenameTabDialog(
+private fun RenameSessionDialog(
     currentLabel: String,
     onDismiss: () -> Unit,
     onRename: (String) -> Unit,
@@ -328,19 +336,19 @@ private fun RenameTabDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Rename Tab") },
+        title = { Text("Rename Session") },
         text = {
             OutlinedTextField(
                 value = label,
                 onValueChange = { label = it },
-                label = { Text("Label") },
+                label = { Text("Name") },
                 singleLine = true,
             )
         },
         confirmButton = {
             TextButton(
                 onClick = { onRename(label) },
-                enabled = label.isNotBlank(),
+                enabled = label.isNotBlank() && label != currentLabel,
             ) {
                 Text("Rename")
             }
@@ -352,3 +360,4 @@ private fun RenameTabDialog(
         },
     )
 }
+

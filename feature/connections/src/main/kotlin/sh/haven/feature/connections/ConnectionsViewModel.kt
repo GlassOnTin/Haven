@@ -375,6 +375,38 @@ class ConnectionsViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Rename a remote session (tmux/screen/byobu) and refresh the session list.
+     */
+    fun renameRemoteSession(oldName: String, newName: String) {
+        val sel = _sessionSelection.value ?: return
+        val renameCmd = sel.manager.renameCommand?.invoke(oldName, newName) ?: return
+        val session = sshSessionManager.getSession(sel.sessionId) ?: return
+
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    session.client.execCommand(renameCmd)
+                }
+                // Refresh the session list
+                val listCmd = sel.manager.listCommand ?: return@launch
+                val updated = withContext(Dispatchers.IO) {
+                    try {
+                        val result = session.client.execCommand(listCmd)
+                        if (result.exitStatus == 0) {
+                            SessionManager.parseSessionList(sel.manager, result.stdout)
+                        } else emptyList()
+                    } catch (_: Exception) {
+                        emptyList()
+                    }
+                }
+                _sessionSelection.value = sel.copy(sessionNames = updated)
+            } catch (e: Exception) {
+                _error.value = "Failed to rename session: ${e.message}"
+            }
+        }
+    }
+
     fun dismissSessionPicker() {
         val sel = _sessionSelection.value ?: return
         _sessionSelection.value = null

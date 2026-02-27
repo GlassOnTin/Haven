@@ -13,12 +13,32 @@ enum class SessionManager(
     val command: ((String) -> String)?,
     val listCommand: String?,
     val killCommand: ((String) -> String)? = null,
+    val renameCommand: ((old: String, new: String) -> String)? = null,
 ) {
     NONE("None", null, null),
-    TMUX("tmux", { name -> "tmux new-session -A -s $name" }, "tmux ls -F '#{session_name}' 2>/dev/null", { name -> "tmux kill-session -t $name" }),
-    ZELLIJ("zellij", { name -> "zellij attach $name --create" }, "zellij ls 2>/dev/null", { name -> "zellij kill-session $name 2>/dev/null; zellij delete-session $name 2>/dev/null" }),
-    SCREEN("screen", { name -> "screen -dRR $name" }, "screen -ls 2>/dev/null", { name -> "screen -S $name -X quit" }),
-    BYOBU("byobu", { name -> "byobu new-session -A -s $name" }, "byobu ls -F '#{session_name}' 2>/dev/null", { name -> "byobu kill-session -t $name" });
+    TMUX("tmux",
+        { name -> "tmux new-session -A -s $name" },
+        "tmux ls -F '#{session_name}' 2>/dev/null",
+        { name -> "tmux kill-session -t $name" },
+        { old, new -> "tmux rename-session -t $old $new" },
+    ),
+    ZELLIJ("zellij",
+        { name -> "zellij attach $name --create" },
+        "zellij ls 2>/dev/null",
+        { name -> "zellij kill-session $name 2>/dev/null; zellij delete-session $name 2>/dev/null" },
+    ),
+    SCREEN("screen",
+        { name -> "screen -dRR $name" },
+        "screen -ls 2>/dev/null",
+        { name -> "screen -S $name -X quit" },
+        { old, new -> "screen -S $old -X sessionname $new" },
+    ),
+    BYOBU("byobu",
+        { name -> "byobu new-session -A -s $name" },
+        "byobu ls -F '#{session_name}' 2>/dev/null",
+        { name -> "byobu kill-session -t $name" },
+        { old, new -> "byobu rename-session -t $old $new" },
+    );
 
     companion object {
         /** Strip ANSI escape sequences (colors, bold, etc.) from a string. */

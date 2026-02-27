@@ -331,12 +331,6 @@ class TerminalViewModel @Inject constructor(
         }
     }
 
-    fun renameTab(sessionId: String, newLabel: String) {
-        _tabs.value = _tabs.value.map { tab ->
-            if (tab.sessionId == sessionId) tab.copy(label = newLabel) else tab
-        }
-    }
-
     fun closeTab(sessionId: String) {
         // Check both managers
         if (sessionManager.sessions.value.containsKey(sessionId)) {
@@ -518,6 +512,38 @@ class TerminalViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "killRemoteSession failed", e)
+            }
+        }
+    }
+
+    fun renameRemoteSession(oldName: String, newName: String) {
+        val sel = _newTabSessionPicker.value ?: return
+        val renameCmd = sel.manager.renameCommand?.invoke(oldName, newName) ?: return
+        val session = sessionManager.getSession(sel.sessionId) ?: return
+
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    session.client.execCommand(renameCmd)
+                }
+                val listCmd = sel.manager.listCommand ?: return@launch
+                val updated = withContext(Dispatchers.IO) {
+                    try {
+                        val result = session.client.execCommand(listCmd)
+                        if (result.exitStatus == 0) {
+                            SessionManager.parseSessionList(sel.manager, result.stdout)
+                        } else emptyList()
+                    } catch (_: Exception) {
+                        emptyList()
+                    }
+                }
+                if (updated.isNotEmpty()) {
+                    _newTabSessionPicker.value = sel.copy(sessionNames = updated)
+                } else {
+                    _newTabSessionPicker.value = null
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "renameRemoteSession failed", e)
             }
         }
     }
