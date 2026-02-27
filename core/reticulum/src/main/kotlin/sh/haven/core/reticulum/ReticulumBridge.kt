@@ -11,17 +11,15 @@ interface ReticulumBridge {
     fun isInitialised(): Boolean
 
     /**
-     * Initialise RNS, connecting to Sideband's shared instance.
+     * Initialise RNS, connecting to either Sideband's shared instance or a direct gateway.
      *
      * @param configDir writable directory for RNS config/identity storage
-     * @param rpcKey hex-encoded shared instance RPC key from Sideband
-     * @param host shared instance host (default 127.0.0.1)
-     * @param port shared instance TCP port (default 37428)
+     * @param host shared instance or gateway host (default 127.0.0.1)
+     * @param port shared instance or gateway TCP port (default 37428)
      * @return Haven's RNS identity hash
      */
     fun initReticulum(
         configDir: String,
-        rpcKey: String? = null,
         host: String = "127.0.0.1",
         port: Int = 37428,
     ): String
@@ -62,4 +60,13 @@ interface ReticulumBridge {
 
     /** Return the RNS init mode: "sideband", "gateway", or null if not initialised. */
     fun getInitMode(): String?
+
+    /** Return discovered rnsh destinations as a JSON array string. */
+    fun getDiscoveredDestinations(): String
+
+    /**
+     * Probe for Sideband's shared instance and speculatively init RNS if found.
+     * Safe to call multiple times. Returns true if connected to Sideband.
+     */
+    fun probeSideband(configDir: String): Boolean
 }

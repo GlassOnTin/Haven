@@ -1,11 +1,8 @@
 package sh.haven.feature.settings
 
-import android.content.ClipboardManager
-import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
-import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -15,11 +12,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ColorLens
-import androidx.compose.material.icons.filled.ContentPaste
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material3.AlertDialog
@@ -62,8 +56,6 @@ fun SettingsScreen(
     val fontSize by viewModel.terminalFontSize.collectAsState()
     val theme by viewModel.theme.collectAsState()
     val sessionManager by viewModel.sessionManager.collectAsState()
-    val reticulumConfigured by viewModel.reticulumConfigured.collectAsState()
-    val reticulumRpcKey by viewModel.reticulumRpcKey.collectAsState()
     var showFontSizeDialog by remember { mutableStateOf(false) }
     var showSessionManagerDialog by remember { mutableStateOf(false) }
     var showThemeDialog by remember { mutableStateOf(false) }
@@ -109,43 +101,6 @@ fun SettingsScreen(
             subtitle = theme.label,
             onClick = { showThemeDialog = true },
         )
-
-        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-        // Reticulum section
-        SettingsItem(
-            icon = Icons.Filled.ContentPaste,
-            title = "Sideband RPC key",
-            subtitle = if (reticulumConfigured) {
-                "Configured: ${reticulumRpcKey.take(16)}..."
-            } else {
-                "Not configured — paste from Sideband"
-            },
-            onClick = {
-                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                val clip = clipboard.primaryClip?.getItemAt(0)?.text?.toString()?.trim()
-                if (clip != null) {
-                    // Try to parse Sideband config format or raw hex key
-                    val rpcKey = parseSidebandRpcKey(clip)
-                    if (rpcKey != null) {
-                        viewModel.setReticulumRpcKey(rpcKey)
-                        Toast.makeText(context, "RPC key saved", Toast.LENGTH_SHORT).show()
-                    } else {
-                        Toast.makeText(context, "No valid RPC key in clipboard", Toast.LENGTH_SHORT).show()
-                    }
-                } else {
-                    Toast.makeText(context, "Clipboard empty", Toast.LENGTH_SHORT).show()
-                }
-            },
-        )
-        if (reticulumConfigured) {
-            SettingsItem(
-                icon = Icons.Filled.Delete,
-                title = "Clear RPC key",
-                subtitle = "Remove Sideband configuration",
-                onClick = { viewModel.clearReticulumConfig() },
-            )
-        }
 
         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
@@ -210,26 +165,6 @@ fun SettingsScreen(
 }
 
 private const val GITHUB_URL = "https://github.com/GlassOnTin/Haven"
-
-/**
- * Parse an RPC key from clipboard text.
- * Accepts either:
- * - Raw hex string (32+ hex chars)
- * - Sideband config format containing "rpc_key = <hex>"
- */
-private fun parseSidebandRpcKey(text: String): String? {
-    // Try Sideband config format: "rpc_key = <hex>"
-    val configMatch = Regex("""rpc_key\s*=\s*([0-9a-fA-F]{32,})""").find(text)
-    if (configMatch != null) return configMatch.groupValues[1].lowercase()
-
-    // Try raw hex (at least 32 chars, all hex)
-    val trimmed = text.trim()
-    if (trimmed.length >= 32 && trimmed.all { it in "0123456789abcdefABCDEF" }) {
-        return trimmed.lowercase()
-    }
-
-    return null
-}
 
 @Composable
 private fun AboutDialog(

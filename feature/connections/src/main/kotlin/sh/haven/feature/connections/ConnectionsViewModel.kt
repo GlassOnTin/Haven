@@ -29,9 +29,12 @@ import sh.haven.core.ssh.SessionManager
 import sh.haven.core.ssh.SshSessionManager
 import sh.haven.core.reticulum.ReticulumBridge
 import sh.haven.core.reticulum.ReticulumSessionManager
+import android.util.Log
 import java.io.File
 import java.util.Base64
 import javax.inject.Inject
+
+private const val TAG = "ConnectionsVM"
 
 /** Unified connection status that maps both SSH and Reticulum states. */
 enum class ProfileStatus { CONNECTING, CONNECTED, RECONNECTING, DISCONNECTED, ERROR }
@@ -123,6 +126,52 @@ class ConnectionsViewModel @Inject constructor(
 
     fun onNavigated() {
         _navigateToTerminal.value = null
+    }
+
+    data class DiscoveredDestination(val hash: String, val hops: Int)
+
+    private val _discoveredDestinations = MutableStateFlow<List<DiscoveredDestination>>(emptyList())
+    val discoveredDestinations: StateFlow<List<DiscoveredDestination>> = _discoveredDestinations.asStateFlow()
+
+    fun refreshDiscoveredDestinations() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                // Speculatively connect to Sideband if RNS isn't initialised yet
+                if (!reticulumBridge.isInitialised()) {
+                    Log.d(TAG, "RNS not initialised, probing for Sideband...")
+                    val configDir = File(appContext.filesDir, "reticulum")
+                        .apply { mkdirs() }.absolutePath
+                    val probeResult = reticulumBridge.probeSideband(configDir)
+                    Log.d(TAG, "probeSideband result: $probeResult, isInitialised: ${reticulumBridge.isInitialised()}")
+                } else {
+                    Log.d(TAG, "RNS already initialised (mode=${reticulumBridge.getInitMode()})")
+                }
+                if (!reticulumBridge.isInitialised()) {
+                    Log.d(TAG, "RNS still not initialised after probe, skipping destination refresh")
+                    return@launch
+                }
+
+                val json = reticulumBridge.getDiscoveredDestinations()
+                val list = parseDiscoveredDestinations(json)
+                Log.d(TAG, "Discovered ${list.size} destinations: ${list.map { it.hash.take(8) }}")
+                _discoveredDestinations.value = list
+            } catch (e: Exception) {
+                Log.e(TAG, "refreshDiscoveredDestinations failed", e)
+            }
+        }
+    }
+
+    private fun parseDiscoveredDestinations(json: String): List<DiscoveredDestination> {
+        // Simple JSON array parsing without adding a dependency
+        val results = mutableListOf<DiscoveredDestination>()
+        val pattern = Regex(""""hash":\s*"([0-9a-f]+)".*?"hops":\s*(-?\d+)""")
+        for (match in pattern.findAll(json)) {
+            results.add(DiscoveredDestination(
+                hash = match.groupValues[1],
+                hops = match.groupValues[2].toIntOrNull() ?: -1,
+            ))
+        }
+        return results
     }
 
     fun saveConnection(profile: ConnectionProfile) {
@@ -239,13 +288,11 @@ class ConnectionsViewModel @Inject constructor(
 
             try {
                 val configDir = File(appContext.filesDir, "reticulum").apply { mkdirs() }.absolutePath
-                val rpcKey = preferencesRepository.reticulumRpcKey.first()
 
                 withContext(Dispatchers.IO) {
                     reticulumSessionManager.connectSession(
                         sessionId = sessionId,
                         configDir = configDir,
-                        rpcKey = rpcKey,
                         host = profile.reticulumHost,
                         port = profile.reticulumPort,
                     )

@@ -71,6 +71,7 @@ fun ConnectionsScreen(
     val connections by viewModel.connections.collectAsState()
     val sshKeys by viewModel.sshKeys.collectAsState()
     val profileStatuses by viewModel.profileStatuses.collectAsState()
+    val discoveredDestinations by viewModel.discoveredDestinations.collectAsState()
     val connectingProfileId by viewModel.connectingProfileId.collectAsState()
     val error by viewModel.error.collectAsState()
     val navigateToTerminal by viewModel.navigateToTerminal.collectAsState()
@@ -107,8 +108,14 @@ fun ConnectionsScreen(
         }
     }
 
+    // Probe for Sideband and start collecting announces as soon as the
+    // Connections tab is shown, so destinations are ready by the time the
+    // user opens the New Connection dialog.
+    LaunchedEffect(Unit) { viewModel.refreshDiscoveredDestinations() }
+
     if (showAddDialog) {
         ConnectionEditDialog(
+            discoveredDestinations = discoveredDestinations,
             onDismiss = { showAddDialog = false },
             onSave = { profile ->
                 viewModel.saveConnection(profile)
@@ -120,6 +127,7 @@ fun ConnectionsScreen(
     editingProfile?.let { profile ->
         ConnectionEditDialog(
             existing = profile,
+            discoveredDestinations = discoveredDestinations,
             onDismiss = { editingProfile = null },
             onSave = { updated ->
                 viewModel.saveConnection(updated)

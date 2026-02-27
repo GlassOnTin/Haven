@@ -21,6 +21,8 @@ _identity = None
 _reticulum = None
 _gateways = {}  # (host, port) -> TCPClientInterface instance
 _init_mode = None  # "sideband" or "gateway" — tracks how RNS was first initialised
+_announced = {}  # dest_hash_hex -> {"hops": int, "timestamp": float}
+_announce_handler = None
 
 
 def _ensure_rns():
@@ -37,7 +39,7 @@ def _is_sideband_target(host, port):
 
 
 def init_reticulum(config_dir, shared_instance_host="127.0.0.1",
-                   shared_instance_port=37428, rpc_key=None):
+                   shared_instance_port=37428):
     """
     Initialise RNS and connect to either:
     - Sideband's TCP shared instance (localhost:37428) — joins as shared instance client
@@ -54,7 +56,7 @@ def init_reticulum(config_dir, shared_instance_host="127.0.0.1",
 
     Returns Haven's RNS identity hash (hex string).
     """
-    global _reticulum, _identity, _gateways, _init_mode
+    global _reticulum, _identity, _gateways, _init_mode, _announce_handler
 
     shared_instance_port = int(shared_instance_port)
     sideband_mode = _is_sideband_target(shared_instance_host, shared_instance_port)
@@ -89,13 +91,12 @@ def init_reticulum(config_dir, shared_instance_host="127.0.0.1",
             # try to create a TCP shared instance on port 37428; when that
             # fails (Sideband already owns it), RNS falls back to connecting
             # as a client — which is what we want.
-            rpc_line = f"\n  rpc_key = {rpc_key}" if rpc_key else ""
             config_content = f"""[reticulum]
   enable_transport = false
   share_instance = true
   shared_instance_type = tcp
   shared_instance_port = {shared_instance_port}
-  instance_control_port = 0{rpc_line}
+  instance_control_port = 0
 
 [interfaces]
 """
@@ -121,7 +122,7 @@ def init_reticulum(config_dir, shared_instance_host="127.0.0.1",
         with open(config_path, "w") as f:
             f.write(config_content)
 
-        print(f"[Haven] init_reticulum: mode={_init_mode} host={shared_instance_host} port={shared_instance_port} rpc_key={'set' if rpc_key else 'null'}")
+        print(f"[Haven] init_reticulum: mode={_init_mode} host={shared_instance_host} port={shared_instance_port}")
         print(f"[Haven] Config:\n{config_content}")
 
         # RNS uses signal.signal() internally which only works on the main
@@ -146,6 +147,11 @@ def init_reticulum(config_dir, shared_instance_host="127.0.0.1",
 
         if not sideband_mode:
             _gateways[gateway] = None  # Interface created by RNS from config
+
+        # Register rnsh announce handler
+        _announce_handler = _RnshAnnounceHandler()
+        RNS.Transport.register_announce_handler(_announce_handler)
+        print("[Haven] Registered rnsh announce handler")
 
     # Load or create a persistent identity for Haven
     RNS = _ensure_rns()
@@ -184,6 +190,43 @@ def _ensure_gateway(host, port):
     print(f"[Haven] Gateway {name} added OK")
 
 
+class _RnshAnnounceHandler:
+    """Collect rnsh destination announces from the network."""
+    aspect_filter = "rnsh"
+    receive_path_responses = True
+
+    def received_announce(self, destination_hash, announced_identity, app_data,
+                          announce_packet_hash=None, is_path_response=False):
+        RNS = _ensure_rns()
+        dest_hex = destination_hash.hex()
+        hops = -1
+        if destination_hash in RNS.Transport.path_table:
+            hops = RNS.Transport.path_table[destination_hash][2]
+        _announced[dest_hex] = {
+            "hops": hops,
+            "timestamp": time.time(),
+        }
+        print(f"[Haven] rnsh announce: {dest_hex} ({hops} hops)")
+
+
+def get_discovered_destinations():
+    """
+    Return a list of discovered rnsh destinations as JSON string.
+    Each entry: {"hash": "<hex>", "hops": <int>}
+    Returns destinations heard via announces.
+    """
+    import json
+    results = []
+    for dest_hex, info in _announced.items():
+        results.append({
+            "hash": dest_hex,
+            "hops": info.get("hops", -1),
+        })
+    # Sort by hop count (nearest first), unknowns last
+    results.sort(key=lambda d: d["hops"] if d["hops"] >= 0 else 999)
+    return json.dumps(results)
+
+
 def get_identity_hash():
     """Return the hex hash of Haven's RNS identity, or None if not initialised."""
     if _identity is None:
@@ -194,6 +237,35 @@ def get_identity_hash():
 def get_init_mode():
     """Return the RNS init mode: 'sideband', 'gateway', or None."""
     return _init_mode
+
+
+def probe_sideband(config_dir, host="127.0.0.1", port=37428):
+    """
+    Check if Sideband's shared instance is listening, and if so,
+    speculatively initialise RNS in Sideband mode to start collecting
+    announces. Safe to call multiple times — no-op if already initialised.
+
+    Returns True if connected to Sideband, False otherwise.
+    """
+    import socket
+
+    if _reticulum is not None:
+        # Already initialised — return current state
+        return _init_mode == "sideband" and _reticulum.is_connected_to_shared_instance
+
+    # TCP probe — check if Sideband is listening before committing
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(1.0)
+        sock.connect((host, int(port)))
+        sock.close()
+    except (OSError, socket.timeout):
+        print(f"[Haven] probe_sideband: no listener on {host}:{port}")
+        return False
+
+    print(f"[Haven] probe_sideband: Sideband detected on {host}:{port}, initialising...")
+    init_reticulum(config_dir, host, int(port))
+    return _reticulum is not None and _reticulum.is_connected_to_shared_instance
 
 
 def resolve_destination(destination_hash_hex):

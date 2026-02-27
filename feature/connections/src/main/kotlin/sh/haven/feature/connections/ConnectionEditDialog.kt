@@ -2,6 +2,8 @@ package sh.haven.feature.connections
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -12,6 +14,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -24,9 +27,11 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import sh.haven.core.data.db.entities.ConnectionProfile
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ConnectionEditDialog(
     existing: ConnectionProfile? = null,
+    discoveredDestinations: List<ConnectionsViewModel.DiscoveredDestination> = emptyList(),
     onDismiss: () -> Unit,
     onSave: (ConnectionProfile) -> Unit,
 ) {
@@ -115,6 +120,43 @@ fun ConnectionEditDialog(
                         )
                     }
                 } else {
+                    // Discovered destinations — filter by typed prefix, cap at 8
+                    val filtered = remember(discoveredDestinations, destinationHash) {
+                        val prefix = destinationHash.lowercase()
+                        discoveredDestinations
+                            .filter { prefix.isEmpty() || it.hash.startsWith(prefix) }
+                            .take(8)
+                    }
+                    if (filtered.isNotEmpty()) {
+                        val hiddenCount = discoveredDestinations.size - filtered.size
+                        Text(
+                            text = if (hiddenCount > 0) {
+                                "Discovered (${filtered.size} of ${discoveredDestinations.size})"
+                            } else {
+                                "Discovered (${filtered.size})"
+                            },
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            filtered.forEach { dest ->
+                                val hopsLabel = if (dest.hops >= 0) " (${dest.hops}h)" else ""
+                                SuggestionChip(
+                                    onClick = { destinationHash = dest.hash },
+                                    label = {
+                                        Text(
+                                            text = dest.hash.take(12) + ".." + hopsLabel,
+                                            style = MaterialTheme.typography.labelSmall,
+                                        )
+                                    },
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(4.dp))
+                    }
+
                     OutlinedTextField(
                         value = destinationHash,
                         onValueChange = {
@@ -138,15 +180,6 @@ fun ConnectionEditDialog(
                         },
                         label = { Text("Local Sideband") },
                     )
-                    if (localSideband) {
-                        Text(
-                            text = "Requires Sideband running on this device. " +
-                                "In Sideband, enable \"Share Reticulum Instance\" " +
-                                "and copy the RPC key into Haven Settings.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
                     if (!localSideband) {
                         Spacer(Modifier.height(8.dp))
                         Row(

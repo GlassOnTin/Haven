@@ -452,7 +452,6 @@ class TerminalViewModel @Inject constructor(
                     reticulumSessionManager.connectSession(
                         sessionId = sessionId,
                         configDir = "", // Already initialised
-                        rpcKey = null,
                         host = "",
                         port = 0,
                     )

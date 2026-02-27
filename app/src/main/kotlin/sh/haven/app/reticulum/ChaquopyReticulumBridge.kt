@@ -29,7 +29,6 @@ class ChaquopyReticulumBridge @Inject constructor() : ReticulumBridge {
 
     override fun initReticulum(
         configDir: String,
-        rpcKey: String?,
         host: String,
         port: Int,
     ): String {
@@ -38,7 +37,6 @@ class ChaquopyReticulumBridge @Inject constructor() : ReticulumBridge {
             configDir,
             host,
             port,
-            rpcKey,
         )
         initialised = true
         Log.d(TAG, "Reticulum initialised, identity: ${result.toString()}")
@@ -87,5 +85,18 @@ class ChaquopyReticulumBridge @Inject constructor() : ReticulumBridge {
     override fun getInitMode(): String? {
         val result = module.callAttr("get_init_mode")
         return result?.toString()
+    }
+
+    override fun getDiscoveredDestinations(): String {
+        return module.callAttr("get_discovered_destinations").toString()
+    }
+
+    override fun probeSideband(configDir: String): Boolean {
+        val result = module.callAttr("probe_sideband", configDir).toBoolean()
+        if (result) {
+            initialised = true
+            Log.d(TAG, "probeSideband: Sideband detected, RNS initialised")
+        }
+        return result
     }
 }

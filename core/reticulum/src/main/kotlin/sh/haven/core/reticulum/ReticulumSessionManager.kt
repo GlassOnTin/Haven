@@ -75,7 +75,6 @@ class ReticulumSessionManager @Inject constructor(
     fun connectSession(
         sessionId: String,
         configDir: String,
-        rpcKey: String?,
         host: String,
         port: Int,
     ) {
@@ -96,8 +95,8 @@ class ReticulumSessionManager @Inject constructor(
 
         // Always call initReticulum — it bootstraps RNS on first call
         // and ensures a gateway interface exists for this host:port on subsequent calls.
-        Log.w(TAG, "initReticulum: host=$host port=$port rpcKey=${rpcKey?.take(8) ?: "null"}...")
-        val identityHash = bridge.initReticulum(configDir, rpcKey, host, port)
+        Log.w(TAG, "initReticulum: host=$host port=$port")
+        val identityHash = bridge.initReticulum(configDir, host, port)
         Log.w(TAG, "initReticulum OK, identity=$identityHash")
 
         Log.w(TAG, "Resolving destination ${session.destinationHash}...")
