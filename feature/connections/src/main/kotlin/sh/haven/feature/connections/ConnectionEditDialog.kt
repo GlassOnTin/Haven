@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -35,8 +36,15 @@ fun ConnectionEditDialog(
     var port by remember { mutableStateOf(existing?.port?.toString() ?: "22") }
     var username by remember { mutableStateOf(existing?.username ?: "") }
     var destinationHash by remember { mutableStateOf(existing?.destinationHash ?: "") }
-    var rnsHost by remember { mutableStateOf(existing?.reticulumHost ?: "127.0.0.1") }
-    var rnsPort by remember { mutableStateOf(existing?.reticulumPort?.toString() ?: "37428") }
+    var localSideband by remember {
+        mutableStateOf(
+            existing == null ||
+                (existing.reticulumHost in listOf("127.0.0.1", "localhost", "::1") &&
+                    existing.reticulumPort == 37428),
+        )
+    }
+    var rnsHost by remember { mutableStateOf(existing?.reticulumHost ?: "") }
+    var rnsPort by remember { mutableStateOf(existing?.reticulumPort?.toString() ?: "4242") }
 
     val isEdit = existing != null
     val title = if (isEdit) "Edit Connection" else "New Connection"
@@ -119,25 +127,48 @@ fun ConnectionEditDialog(
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Spacer(Modifier.height(8.dp))
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        OutlinedTextField(
-                            value = rnsHost,
-                            onValueChange = { rnsHost = it },
-                            label = { Text("Gateway Host") },
-                            placeholder = { Text("127.0.0.1") },
-                            singleLine = true,
-                            modifier = Modifier.weight(1f),
+                    FilterChip(
+                        selected = localSideband,
+                        onClick = {
+                            localSideband = !localSideband
+                            if (localSideband) {
+                                rnsHost = "127.0.0.1"
+                                rnsPort = "37428"
+                            }
+                        },
+                        label = { Text("Local Sideband") },
+                    )
+                    if (localSideband) {
+                        Text(
+                            text = "Requires Sideband running on this device. " +
+                                "In Sideband, enable \"Share Reticulum Instance\" " +
+                                "and copy the RPC key into Haven Settings.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        OutlinedTextField(
-                            value = rnsPort,
-                            onValueChange = { rnsPort = it.filter { c -> c.isDigit() } },
-                            label = { Text("Port") },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.width(80.dp),
-                        )
+                    }
+                    if (!localSideband) {
+                        Spacer(Modifier.height(8.dp))
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            OutlinedTextField(
+                                value = rnsHost,
+                                onValueChange = { rnsHost = it },
+                                label = { Text("Gateway Host") },
+                                placeholder = { Text("192.168.0.2") },
+                                singleLine = true,
+                                modifier = Modifier.weight(1f),
+                            )
+                            OutlinedTextField(
+                                value = rnsPort,
+                                onValueChange = { rnsPort = it.filter { c -> c.isDigit() } },
+                                label = { Text("Port") },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.width(80.dp),
+                            )
+                        }
                     }
                 }
             }
@@ -146,7 +177,7 @@ fun ConnectionEditDialog(
             val canSave = if (connectionType == "SSH") {
                 host.isNotBlank() && username.isNotBlank()
             } else {
-                destinationHash.length == 32 && rnsHost.isNotBlank()
+                destinationHash.length == 32 && (localSideband || rnsHost.isNotBlank())
             }
             TextButton(
                 onClick = {
@@ -166,7 +197,8 @@ fun ConnectionEditDialog(
                             destinationHash = null,
                         )
                     } else {
-                        val rnsPortInt = rnsPort.toIntOrNull() ?: 37428
+                        val savedHost = if (localSideband) "127.0.0.1" else rnsHost
+                        val savedPort = if (localSideband) 37428 else (rnsPort.toIntOrNull() ?: 4242)
                         (existing ?: ConnectionProfile(
                             label = label,
                             host = "",
@@ -179,8 +211,8 @@ fun ConnectionEditDialog(
                             username = "",
                             connectionType = "RETICULUM",
                             destinationHash = destinationHash.lowercase(),
-                            reticulumHost = rnsHost,
-                            reticulumPort = rnsPortInt,
+                            reticulumHost = savedHost,
+                            reticulumPort = savedPort,
                         )
                     }
                     onSave(profile)

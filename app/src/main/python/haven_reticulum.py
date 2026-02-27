@@ -19,6 +19,8 @@ import time
 _rns = None
 _identity = None
 _reticulum = None
+_gateways = {}  # (host, port) -> TCPClientInterface instance
+_init_mode = None  # "sideband" or "gateway" — tracks how RNS was first initialised
 
 
 def _ensure_rns():
@@ -29,58 +31,124 @@ def _ensure_rns():
     return _rns
 
 
+def _is_sideband_target(host, port):
+    """Check if the target is a local Sideband shared instance."""
+    return host in ("127.0.0.1", "localhost", "::1") and port == 37428
+
+
 def init_reticulum(config_dir, shared_instance_host="127.0.0.1",
                    shared_instance_port=37428, rpc_key=None):
     """
-    Initialise RNS as a client connecting to Sideband's shared instance.
+    Initialise RNS and connect to either:
+    - Sideband's TCP shared instance (localhost:37428) — joins as shared instance client
+    - A remote TCP gateway (any other host:port) — uses TCPClientInterface
+
+    Called before every connection. First call bootstraps RNS; subsequent
+    calls add new gateway interfaces if the host:port hasn't been seen.
+
+    The first call's mode (sideband vs gateway) determines the RNS instance
+    type for the process lifetime. If Sideband mode was initialised first,
+    direct gateways are added as additional TCPClientInterfaces. If gateway
+    mode was initialised first, Sideband connections are not possible (RNS
+    cannot switch to shared instance client mode after standalone init).
 
     Returns Haven's RNS identity hash (hex string).
     """
-    global _reticulum, _identity
+    global _reticulum, _identity, _gateways, _init_mode
 
-    # Guard against double-init (Python side may already have RNS running
-    # even if the Kotlin flag was reset after an error)
+    shared_instance_port = int(shared_instance_port)
+    sideband_mode = _is_sideband_target(shared_instance_host, shared_instance_port)
+    gateway = (shared_instance_host, shared_instance_port)
+
     if _reticulum is not None:
+        # RNS already running
+        if not sideband_mode:
+            # Add a direct gateway interface (works in both sideband and standalone mode)
+            _ensure_gateway(shared_instance_host, shared_instance_port)
+        elif _init_mode == "gateway":
+            # User wants Sideband but RNS was initialised in gateway mode.
+            # Cannot switch — log a warning.
+            print("[Haven] WARNING: RNS was initialised in gateway mode. "
+                  "Cannot switch to Sideband shared instance. "
+                  "Restart Haven to use Local Sideband.")
+
         if _identity is not None:
             return _identity.hexhash
         # RNS running but no identity — fall through to load/create identity
 
-    RNS = _ensure_rns()
+    else:
+        # First init — bootstrap RNS
+        RNS = _ensure_rns()
 
-    os.makedirs(config_dir, exist_ok=True)
-    config_path = os.path.join(config_dir, "config")
+        os.makedirs(config_dir, exist_ok=True)
+        config_path = os.path.join(config_dir, "config")
 
-    config_content = f"""[reticulum]
+        if sideband_mode:
+            # Connect to Sideband's TCP shared instance.
+            # share_instance = true + shared_instance_type = tcp makes RNS
+            # try to create a TCP shared instance on port 37428; when that
+            # fails (Sideband already owns it), RNS falls back to connecting
+            # as a client — which is what we want.
+            rpc_line = f"\n  rpc_key = {rpc_key}" if rpc_key else ""
+            config_content = f"""[reticulum]
   enable_transport = false
-  share_instance = false
+  share_instance = true
+  shared_instance_type = tcp
   shared_instance_port = {shared_instance_port}
-  instance_control_port = {shared_instance_port + 1}
+  instance_control_port = 0{rpc_line}
 
 [interfaces]
-  [[Shared Instance]]
+"""
+            _init_mode = "sideband"
+        else:
+            # Connect to a remote TCP gateway directly
+            config_content = f"""[reticulum]
+  enable_transport = false
+  share_instance = false
+  shared_instance_port = 0
+  instance_control_port = 0
+
+[interfaces]
+  [[Gateway {shared_instance_host}:{shared_instance_port}]]
     type = TCPClientInterface
     enabled = true
     target_host = {shared_instance_host}
     target_port = {shared_instance_port}
 """
-    with open(config_path, "w") as f:
-        f.write(config_content)
+            _init_mode = "gateway"
 
-    # RNS uses signal.signal() internally which only works on the main
-    # thread.  On Android/Chaquopy we are called from a coroutine IO
-    # thread, so patch signal temporarily to avoid the crash.
-    import signal
-    _orig_signal = signal.signal
-    signal.signal = lambda *a, **kw: None
-    try:
-        _reticulum = RNS.Reticulum(
-            configdir=config_dir,
-            loglevel=RNS.LOG_VERBOSE,
-        )
-    finally:
-        signal.signal = _orig_signal
+        # Always write config fresh — avoids stale config from previous runs
+        with open(config_path, "w") as f:
+            f.write(config_content)
+
+        print(f"[Haven] init_reticulum: mode={_init_mode} host={shared_instance_host} port={shared_instance_port} rpc_key={'set' if rpc_key else 'null'}")
+        print(f"[Haven] Config:\n{config_content}")
+
+        # RNS uses signal.signal() internally which only works on the main
+        # thread.  On Android/Chaquopy we are called from a coroutine IO
+        # thread, so patch signal temporarily to avoid the crash.
+        import signal
+        _orig_signal = signal.signal
+        signal.signal = lambda *a, **kw: None
+        try:
+            _reticulum = RNS.Reticulum(
+                configdir=config_dir,
+                loglevel=RNS.LOG_VERBOSE,
+            )
+        finally:
+            signal.signal = _orig_signal
+
+        print(f"[Haven] RNS initialized: shared={_reticulum.is_shared_instance} connected_to_shared={_reticulum.is_connected_to_shared_instance} standalone={_reticulum.is_standalone_instance}")
+
+        if sideband_mode and not _reticulum.is_connected_to_shared_instance:
+            print("[Haven] WARNING: Expected to connect to Sideband shared instance but failed. "
+                  "Check that Sideband is running with 'Share Reticulum Instance' enabled.")
+
+        if not sideband_mode:
+            _gateways[gateway] = None  # Interface created by RNS from config
 
     # Load or create a persistent identity for Haven
+    RNS = _ensure_rns()
     identity_path = os.path.join(config_dir, "haven_identity")
     if os.path.isfile(identity_path):
         _identity = RNS.Identity.from_file(identity_path)
@@ -91,11 +159,41 @@ def init_reticulum(config_dir, shared_instance_host="127.0.0.1",
     return _identity.hexhash
 
 
+def _ensure_gateway(host, port):
+    """Add a TCPClientInterface for a gateway if not already connected."""
+    global _gateways
+    gateway = (host, port)
+    if gateway in _gateways:
+        return
+
+    RNS = _ensure_rns()
+    from RNS.vendor.configobj import ConfigObj
+
+    name = f"Gateway {host}:{port}"
+    config = ConfigObj()
+    config["name"] = name
+    config["target_host"] = host
+    config["target_port"] = str(port)
+
+    print(f"[Haven] Adding gateway interface: {name}")
+
+    from RNS.Interfaces.TCPInterface import TCPClientInterface
+    interface = TCPClientInterface(owner=RNS.Transport, configuration=config)
+    _reticulum._add_interface(interface)
+    _gateways[gateway] = interface
+    print(f"[Haven] Gateway {name} added OK")
+
+
 def get_identity_hash():
     """Return the hex hash of Haven's RNS identity, or None if not initialised."""
     if _identity is None:
         return None
     return _identity.hexhash
+
+
+def get_init_mode():
+    """Return the RNS init mode: 'sideband', 'gateway', or None."""
+    return _init_mode
 
 
 def resolve_destination(destination_hash_hex):
@@ -199,12 +297,10 @@ class RnshSession:
         # Protocol handshake: send version info
         self._channel.send(VersionInfoMessage())
 
-        # Send initial window size
-        self._channel.send(WindowSizeMessage(
-            rows=self._rows, cols=self._cols, hpix=0, vpix=0,
-        ))
-
         # Request interactive shell (empty cmdline = login shell)
+        # Window size is included in the execute message — do NOT send
+        # a separate WindowSizeMessage before the command, as rnsh only
+        # accepts ExecuteCommandMessage in LSSTATE_WAIT_CMD state.
         self._channel.send(ExecuteCommandMesssage(
             cmdline=[],
             pipe_stdin=False,
@@ -380,6 +476,7 @@ def get_status():
     """Status dict for debugging."""
     return {
         "initialised": _reticulum is not None,
+        "init_mode": _init_mode,
         "identity": get_identity_hash(),
         "active_sessions": len(_sessions),
     }

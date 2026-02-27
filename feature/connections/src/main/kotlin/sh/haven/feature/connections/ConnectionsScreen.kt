@@ -168,7 +168,9 @@ fun ConnectionsScreen(
         SessionPickerDialog(
             managerLabel = selection.managerLabel,
             sessionNames = selection.sessionNames,
+            canKill = selection.manager.killCommand != null,
             onSelect = { name -> viewModel.onSessionSelected(selection.sessionId, name) },
+            onKill = { name -> viewModel.killRemoteSession(name) },
             onNewSession = { viewModel.onSessionSelected(selection.sessionId, null) },
             onDismiss = { viewModel.dismissSessionPicker() },
         )
@@ -389,7 +391,9 @@ private fun EmptyState() {
 private fun SessionPickerDialog(
     managerLabel: String,
     sessionNames: List<String>,
+    canKill: Boolean = false,
     onSelect: (String) -> Unit,
+    onKill: (String) -> Unit = {},
     onNewSession: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -401,6 +405,17 @@ private fun SessionPickerDialog(
                 sessionNames.forEach { name ->
                     ListItem(
                         headlineContent = { Text(name) },
+                        trailingContent = if (canKill) {
+                            {
+                                IconButton(onClick = { onKill(name) }) {
+                                    Icon(
+                                        Icons.Filled.Delete,
+                                        contentDescription = "Kill session",
+                                        tint = MaterialTheme.colorScheme.error,
+                                    )
+                                }
+                            }
+                        } else null,
                         modifier = Modifier.clickable { onSelect(name) },
                     )
                 }

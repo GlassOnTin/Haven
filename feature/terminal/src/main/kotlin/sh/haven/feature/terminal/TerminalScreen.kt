@@ -102,7 +102,9 @@ fun TerminalScreen(
         NewTabSessionPickerDialog(
             managerLabel = selection.managerLabel,
             sessionNames = selection.sessionNames,
+            canKill = selection.manager.killCommand != null,
             onSelect = { name -> viewModel.onNewTabSessionSelected(selection.sessionId, name) },
+            onKill = { name -> viewModel.killRemoteSession(name) },
             onNewSession = { viewModel.onNewTabSessionSelected(selection.sessionId, null) },
             onDismiss = { viewModel.dismissNewTabSessionPicker() },
         )
@@ -239,7 +241,9 @@ private fun EmptyTerminalState(fontSize: Int) {
 private fun NewTabSessionPickerDialog(
     managerLabel: String,
     sessionNames: List<String>,
+    canKill: Boolean = false,
     onSelect: (String) -> Unit,
+    onKill: (String) -> Unit = {},
     onNewSession: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -251,6 +255,17 @@ private fun NewTabSessionPickerDialog(
                 sessionNames.forEach { name ->
                     ListItem(
                         headlineContent = { Text(name) },
+                        trailingContent = if (canKill) {
+                            {
+                                IconButton(onClick = { onKill(name) }) {
+                                    Icon(
+                                        Icons.Filled.Close,
+                                        contentDescription = "Kill session",
+                                        tint = MaterialTheme.colorScheme.error,
+                                    )
+                                }
+                            }
+                        } else null,
                         modifier = Modifier.clickable { onSelect(name) },
                     )
                 }

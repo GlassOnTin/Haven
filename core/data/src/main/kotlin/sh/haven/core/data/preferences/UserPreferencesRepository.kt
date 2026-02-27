@@ -87,6 +87,12 @@ class UserPreferencesRepository @Inject constructor(
         }
     }
 
+    suspend fun clearReticulumConfig() {
+        dataStore.edit { prefs ->
+            prefs.remove(reticulumRpcKeyKey)
+        }
+    }
+
     enum class ThemeMode(val label: String) {
         SYSTEM("System default"),
         LIGHT("Light"),

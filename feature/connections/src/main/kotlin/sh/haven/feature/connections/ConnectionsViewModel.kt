@@ -115,6 +115,7 @@ class ConnectionsViewModel @Inject constructor(
         val profileId: String,
         val managerLabel: String,
         val sessionNames: List<String>,
+        val manager: SessionManager = SessionManager.NONE,
     )
 
     private val _sessionSelection = MutableStateFlow<SessionSelection?>(null)
@@ -200,6 +201,7 @@ class ConnectionsViewModel @Inject constructor(
                             profileId = profile.id,
                             managerLabel = sshSessionMgr.label,
                             sessionNames = existingSessions,
+                            manager = sshSessionMgr,
                         )
                         _connectingProfileId.value = null
                         return@launch // UI will call onSessionSelected() to continue
@@ -237,12 +239,13 @@ class ConnectionsViewModel @Inject constructor(
 
             try {
                 val configDir = File(appContext.filesDir, "reticulum").apply { mkdirs() }.absolutePath
+                val rpcKey = preferencesRepository.reticulumRpcKey.first()
 
                 withContext(Dispatchers.IO) {
                     reticulumSessionManager.connectSession(
                         sessionId = sessionId,
                         configDir = configDir,
-                        rpcKey = null,
+                        rpcKey = rpcKey,
                         host = profile.reticulumHost,
                         port = profile.reticulumPort,
                     )
@@ -285,6 +288,42 @@ class ConnectionsViewModel @Inject constructor(
                 sshSessionManager.removeSession(sessionId)
             } finally {
                 _connectingProfileId.value = null
+            }
+        }
+    }
+
+    /**
+     * Kill a remote session (tmux/zellij/screen) and refresh the session list.
+     */
+    fun killRemoteSession(sessionName: String) {
+        val sel = _sessionSelection.value ?: return
+        val killCmd = sel.manager.killCommand?.invoke(sessionName) ?: return
+        val session = sshSessionManager.getSession(sel.sessionId) ?: return
+
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    session.client.execCommand(killCmd)
+                }
+                // Refresh the session list
+                val listCmd = sel.manager.listCommand ?: return@launch
+                val updated = withContext(Dispatchers.IO) {
+                    try {
+                        val result = session.client.execCommand(listCmd)
+                        if (result.exitStatus == 0) {
+                            SessionManager.parseSessionList(sel.manager, result.stdout)
+                        } else emptyList()
+                    } catch (_: Exception) {
+                        emptyList()
+                    }
+                }
+                if (updated.isNotEmpty()) {
+                    _sessionSelection.value = sel.copy(sessionNames = updated)
+                } else {
+                    _sessionSelection.value = null
+                }
+            } catch (e: Exception) {
+                _error.value = "Failed to kill session: ${e.message}"
             }
         }
     }

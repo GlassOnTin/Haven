@@ -6,17 +6,19 @@ package sh.haven.core.ssh
  * @param command Template that produces an attach-or-create shell command given a session name,
  *                or null for no session manager.
  * @param listCommand Shell command to list existing sessions, or null if not applicable.
+ * @param killCommand Template that produces a command to kill/delete a session by name.
  */
 enum class SessionManager(
     val label: String,
     val command: ((String) -> String)?,
     val listCommand: String?,
+    val killCommand: ((String) -> String)? = null,
 ) {
     NONE("None", null, null),
-    TMUX("tmux", { name -> "tmux new-session -A -s $name" }, "tmux ls -F '#{session_name}' 2>/dev/null"),
-    ZELLIJ("zellij", { name -> "zellij attach $name --create" }, "zellij ls 2>/dev/null"),
-    SCREEN("screen", { name -> "screen -dRR $name" }, "screen -ls 2>/dev/null"),
-    BYOBU("byobu", { name -> "byobu new-session -A -s $name" }, "byobu ls -F '#{session_name}' 2>/dev/null");
+    TMUX("tmux", { name -> "tmux new-session -A -s $name" }, "tmux ls -F '#{session_name}' 2>/dev/null", { name -> "tmux kill-session -t $name" }),
+    ZELLIJ("zellij", { name -> "zellij attach $name --create" }, "zellij ls 2>/dev/null", { name -> "zellij kill-session $name 2>/dev/null; zellij delete-session $name 2>/dev/null" }),
+    SCREEN("screen", { name -> "screen -dRR $name" }, "screen -ls 2>/dev/null", { name -> "screen -S $name -X quit" }),
+    BYOBU("byobu", { name -> "byobu new-session -A -s $name" }, "byobu ls -F '#{session_name}' 2>/dev/null", { name -> "byobu kill-session -t $name" });
 
     companion object {
         /** Strip ANSI escape sequences (colors, bold, etc.) from a string. */
@@ -34,7 +36,7 @@ enum class SessionManager(
                 NONE -> emptyList()
                 TMUX, BYOBU -> clean.lines().filter { it.isNotBlank() }
                 ZELLIJ -> clean.lines()
-                    .filter { it.isNotBlank() }
+                    .filter { it.isNotBlank() && !it.contains("EXITED") }
                     .map { it.trim().split(Regex("\\s+")).first() }
                     .filter { it.isNotBlank() && !it.startsWith("No ") }
                 SCREEN -> clean.lines()

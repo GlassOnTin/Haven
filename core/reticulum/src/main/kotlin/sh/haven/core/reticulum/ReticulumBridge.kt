@@ -59,4 +59,7 @@ interface ReticulumBridge {
 
     /** Close all sessions and shut down Reticulum. */
     fun closeAll()
+
+    /** Return the RNS init mode: "sideband", "gateway", or null if not initialised. */
+    fun getInitMode(): String?
 }

@@ -220,7 +220,10 @@ class TerminalViewModel @Inject constructor(
                 defaultForeground = Color.White,
                 defaultBackground = Color(0xFF1A1A2E),
                 onKeyboardInput = { data -> coalescer.send(applyModifiers(data)) },
-                onResize = { dims -> termSession.resize(dims.columns, dims.rows) },
+                onResize = { dims ->
+                    Log.d(TAG, "SSH onResize: ${dims.columns}x${dims.rows}")
+                    termSession.resize(dims.columns, dims.rows)
+                },
             )
 
             termSession.start()
@@ -263,7 +266,10 @@ class TerminalViewModel @Inject constructor(
                 defaultForeground = Color.White,
                 defaultBackground = Color(0xFF1A1A2E),
                 onKeyboardInput = { data -> rnsCoalescer.send(applyModifiers(data)) },
-                onResize = { dims -> rnsSession.resize(dims.columns, dims.rows) },
+                onResize = { dims ->
+                    Log.d(TAG, "RNS onResize: ${dims.columns}x${dims.rows}")
+                    rnsSession.resize(dims.columns, dims.rows)
+                },
             )
 
             rnsSession.start()
@@ -352,6 +358,7 @@ class TerminalViewModel @Inject constructor(
         val managerLabel: String,
         val sessionNames: List<String>,
         val sessionId: String,
+        val manager: SessionManager = SessionManager.NONE,
     )
 
     private val _newTabSessionPicker = MutableStateFlow<NewTabSessionSelection?>(null)
@@ -407,6 +414,7 @@ class TerminalViewModel @Inject constructor(
                             managerLabel = sshSessionMgr.label,
                             sessionNames = existingSessions,
                             sessionId = sessionId,
+                            manager = sshSessionMgr,
                         )
                         _newTabLoading.value = false
                         return@launch
@@ -473,6 +481,38 @@ class TerminalViewModel @Inject constructor(
                 sessionManager.removeSession(sessionId)
             } finally {
                 _newTabLoading.value = false
+            }
+        }
+    }
+
+    fun killRemoteSession(sessionName: String) {
+        val sel = _newTabSessionPicker.value ?: return
+        val killCmd = sel.manager.killCommand?.invoke(sessionName) ?: return
+        val session = sessionManager.getSession(sel.sessionId) ?: return
+
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    session.client.execCommand(killCmd)
+                }
+                val listCmd = sel.manager.listCommand ?: return@launch
+                val updated = withContext(Dispatchers.IO) {
+                    try {
+                        val result = session.client.execCommand(listCmd)
+                        if (result.exitStatus == 0) {
+                            SessionManager.parseSessionList(sel.manager, result.stdout)
+                        } else emptyList()
+                    } catch (_: Exception) {
+                        emptyList()
+                    }
+                }
+                if (updated.isNotEmpty()) {
+                    _newTabSessionPicker.value = sel.copy(sessionNames = updated)
+                } else {
+                    _newTabSessionPicker.value = null
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "killRemoteSession failed", e)
             }
         }
     }

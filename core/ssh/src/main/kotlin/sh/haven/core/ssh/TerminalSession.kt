@@ -130,10 +130,12 @@ class TerminalSession(
     }
 
     fun resize(cols: Int, rows: Int) {
+        Log.d(TAG, "resize requested: ${cols}x${rows} closed=$closed")
         if (closed || writeExecutor.isShutdown) return
         try {
             writeExecutor.execute {
                 try {
+                    Log.d(TAG, "setPtySize: ${cols}x${rows}")
                     client.resizeShell(channel, cols, rows)
                 } catch (e: Exception) {
                     Log.e(TAG, "resize failed", e)

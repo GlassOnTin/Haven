@@ -83,4 +83,9 @@ class ChaquopyReticulumBridge @Inject constructor() : ReticulumBridge {
         module.callAttr("close_all")
         // Don't reset initialised — RNS cannot be restarted once running
     }
+
+    override fun getInitMode(): String? {
+        val result = module.callAttr("get_init_mode")
+        return result?.toString()
+    }
 }

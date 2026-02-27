@@ -82,27 +82,45 @@ class ReticulumSessionManager @Inject constructor(
         val session = _sessions.value[sessionId]
             ?: throw IllegalStateException("Session $sessionId not found")
 
-        if (!bridge.isInitialised()) {
-            Log.d(TAG, "Initialising Reticulum...")
-            bridge.initReticulum(configDir, rpcKey, host, port)
+        // Check for mode conflict before init
+        val isSideband = host in listOf("127.0.0.1", "localhost", "::1") && port == 37428
+        val currentMode = bridge.getInitMode()
+        if (isSideband && currentMode == "gateway") {
+            Log.e(TAG, "Mode conflict: RNS initialised as gateway, cannot switch to Sideband")
+            updateStatus(sessionId, SessionState.Status.ERROR)
+            throw RuntimeException(
+                "Cannot use Local Sideband — Reticulum was initialised in direct gateway mode. " +
+                    "Restart Haven to switch to Local Sideband."
+            )
         }
 
-        Log.d(TAG, "Resolving destination ${session.destinationHash}...")
+        // Always call initReticulum — it bootstraps RNS on first call
+        // and ensures a gateway interface exists for this host:port on subsequent calls.
+        Log.w(TAG, "initReticulum: host=$host port=$port rpcKey=${rpcKey?.take(8) ?: "null"}...")
+        val identityHash = bridge.initReticulum(configDir, rpcKey, host, port)
+        Log.w(TAG, "initReticulum OK, identity=$identityHash")
+
+        Log.w(TAG, "Resolving destination ${session.destinationHash}...")
         val resolved = bridge.resolveDestination(session.destinationHash)
         if (!resolved) {
             Log.e(TAG, "Failed to resolve destination ${session.destinationHash}")
             updateStatus(sessionId, SessionState.Status.ERROR)
             throw RuntimeException(
                 "Could not resolve destination ${session.destinationHash}. " +
-                    "Check that Sideband is running and the destination is reachable."
+                    if (isSideband) {
+                        "Check that Sideband is running with 'Share Reticulum Instance' enabled " +
+                            "and has interfaces with routes to this destination."
+                    } else {
+                        "Check that the gateway is reachable and the destination is announced."
+                    }
             )
         }
 
-        Log.d(TAG, "Creating rnsh session to ${session.destinationHash}...")
+        Log.w(TAG, "Creating rnsh session to ${session.destinationHash}...")
         bridge.createSession(session.destinationHash, sessionId)
 
         updateStatus(sessionId, SessionState.Status.CONNECTED)
-        Log.d(TAG, "Session $sessionId connected")
+        Log.w(TAG, "Session $sessionId connected")
     }
 
     /**
