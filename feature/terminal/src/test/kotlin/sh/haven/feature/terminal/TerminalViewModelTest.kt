@@ -1,6 +1,8 @@
 package sh.haven.feature.terminal
 
+import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
@@ -11,12 +13,16 @@ import sh.haven.core.ssh.SshSessionManager
 class TerminalViewModelTest {
 
     private lateinit var sessionManager: SshSessionManager
+    private lateinit var reticulumSessionManager: ReticulumSessionManager
     private lateinit var viewModel: TerminalViewModel
 
     @Before
     fun setUp() {
         sessionManager = SshSessionManager()
-        viewModel = TerminalViewModel(sessionManager, mockk<ReticulumSessionManager>(relaxed = true))
+        reticulumSessionManager = mockk<ReticulumSessionManager>(relaxed = true) {
+            every { sessions } returns MutableStateFlow(emptyMap())
+        }
+        viewModel = TerminalViewModel(sessionManager, reticulumSessionManager)
     }
 
     @Test
