@@ -1,0 +1,6 @@
+- Reticulum connection type alongside SSH (rnsh terminal sessions)
+- Local Sideband and direct TCP gateway modes for Reticulum
+- Announce-based destination discovery with speculative Sideband probe
+- Session rename via pencil icon in connection/terminal session pickers
+- Tab rename via long-press
+- Per-connection Reticulum config, paste dedup fix, word-level selection
