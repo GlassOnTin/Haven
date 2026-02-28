@@ -4,6 +4,7 @@ import io.mockk.mockk
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
+import sh.haven.core.reticulum.ReticulumSessionManager
 import sh.haven.core.ssh.SshClient
 import sh.haven.core.ssh.SshSessionManager
 
@@ -15,7 +16,7 @@ class TerminalViewModelTest {
     @Before
     fun setUp() {
         sessionManager = SshSessionManager()
-        viewModel = TerminalViewModel(sessionManager)
+        viewModel = TerminalViewModel(sessionManager, mockk<ReticulumSessionManager>(relaxed = true))
     }
 
     @Test
