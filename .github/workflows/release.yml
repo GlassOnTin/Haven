@@ -20,6 +20,11 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
