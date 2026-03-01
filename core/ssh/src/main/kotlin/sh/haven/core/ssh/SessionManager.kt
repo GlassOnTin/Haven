@@ -59,6 +59,7 @@ enum class SessionManager(
                     .filter { it.isNotBlank() && !it.contains("EXITED") }
                     .map { it.trim().split(Regex("\\s+")).first() }
                     .filter { it.isNotBlank() && !it.startsWith("No ") }
+                    .sorted()
                 SCREEN -> clean.lines()
                     .map { it.trim() }
                     .filter { it.contains(".") && (it.contains("Detached") || it.contains("Attached")) }
