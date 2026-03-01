@@ -49,6 +49,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -110,9 +111,12 @@ fun ConnectionsScreen(
     }
 
     // Probe for Sideband and start collecting announces as soon as the
-    // Connections tab is shown, so destinations are ready by the time the
-    // user opens the New Connection dialog.
-    LaunchedEffect(Unit) { viewModel.refreshDiscoveredDestinations() }
+    // Connections tab is shown. Refreshes every 30s to pick up announces
+    // arriving over slow LoRa links. Stops when the screen is disposed.
+    DisposableEffect(Unit) {
+        viewModel.startPeriodicRefresh()
+        onDispose { viewModel.stopPeriodicRefresh() }
+    }
 
     if (showAddDialog) {
         ConnectionEditDialog(

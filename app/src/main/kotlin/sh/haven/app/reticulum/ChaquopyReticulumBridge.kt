@@ -43,6 +43,10 @@ class ChaquopyReticulumBridge @Inject constructor() : ReticulumBridge {
         return result.toString()
     }
 
+    override fun requestPath(destinationHashHex: String): Boolean {
+        return module.callAttr("request_path", destinationHashHex).toBoolean()
+    }
+
     override fun resolveDestination(destinationHashHex: String): Boolean {
         return module.callAttr("resolve_destination", destinationHashHex)
             .toBoolean()

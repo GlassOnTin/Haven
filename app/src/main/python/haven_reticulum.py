@@ -268,6 +268,17 @@ def probe_sideband(config_dir, host="127.0.0.1", port=37428):
     return _reticulum is not None and _reticulum.is_connected_to_shared_instance
 
 
+def request_path(destination_hash_hex):
+    """Request a path to a destination. Non-blocking — the response
+    will arrive as a path response and trigger the announce handler."""
+    RNS = _ensure_rns()
+    dest_hash = bytes.fromhex(destination_hash_hex)
+    if not RNS.Transport.has_path(dest_hash):
+        RNS.Transport.request_path(dest_hash)
+        print(f"[Haven] request_path: requested path for {destination_hash_hex}")
+    return RNS.Transport.has_path(dest_hash)
+
+
 def resolve_destination(destination_hash_hex):
     """
     Resolve a destination hash. Blocks up to 15 seconds.

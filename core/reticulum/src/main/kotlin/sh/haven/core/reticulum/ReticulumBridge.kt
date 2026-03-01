@@ -25,6 +25,12 @@ interface ReticulumBridge {
     ): String
 
     /**
+     * Request a path to a destination. Non-blocking — returns true if path
+     * is already known, false if a request was sent (result arrives asynchronously).
+     */
+    fun requestPath(destinationHashHex: String): Boolean
+
+    /**
      * Resolve a destination hash via the Reticulum network.
      * Blocks up to 15 seconds.
      */

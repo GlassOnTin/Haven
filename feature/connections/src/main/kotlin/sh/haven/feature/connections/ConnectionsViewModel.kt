@@ -15,6 +15,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import sh.haven.core.data.db.entities.ConnectionProfile
@@ -133,6 +135,23 @@ class ConnectionsViewModel @Inject constructor(
     private val _discoveredDestinations = MutableStateFlow<List<DiscoveredDestination>>(emptyList())
     val discoveredDestinations: StateFlow<List<DiscoveredDestination>> = _discoveredDestinations.asStateFlow()
 
+    private var periodicRefreshJob: Job? = null
+
+    fun startPeriodicRefresh() {
+        stopPeriodicRefresh()
+        periodicRefreshJob = viewModelScope.launch {
+            while (true) {
+                refreshDiscoveredDestinations()
+                delay(30_000)
+            }
+        }
+    }
+
+    fun stopPeriodicRefresh() {
+        periodicRefreshJob?.cancel()
+        periodicRefreshJob = null
+    }
+
     fun refreshDiscoveredDestinations() {
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -151,6 +170,9 @@ class ConnectionsViewModel @Inject constructor(
                     return@launch
                 }
 
+                // Proactively request paths for saved Reticulum connections
+                requestPathsForSavedConnections()
+
                 val json = reticulumBridge.getDiscoveredDestinations()
                 val list = parseDiscoveredDestinations(json)
                 Log.d(TAG, "Discovered ${list.size} destinations: ${list.map { it.hash.take(8) }}")
@@ -158,6 +180,19 @@ class ConnectionsViewModel @Inject constructor(
             } catch (e: Exception) {
                 Log.e(TAG, "refreshDiscoveredDestinations failed", e)
             }
+        }
+    }
+
+    private suspend fun requestPathsForSavedConnections() {
+        try {
+            val saved = connections.value.filter { it.isReticulum && !it.destinationHash.isNullOrBlank() }
+            for (profile in saved) {
+                val hash = profile.destinationHash ?: continue
+                val alreadyKnown = reticulumBridge.requestPath(hash)
+                Log.d(TAG, "requestPath(${hash.take(8)}...): known=$alreadyKnown")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "requestPathsForSavedConnections failed", e)
         }
     }
 
