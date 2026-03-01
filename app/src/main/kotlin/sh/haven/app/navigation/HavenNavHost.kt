@@ -2,7 +2,10 @@ package sh.haven.app.navigation
 
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.exclude
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
@@ -12,6 +15,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -53,6 +57,11 @@ fun HavenNavHost(
     var terminalSelectionActive by remember { mutableStateOf(false) }
 
     Scaffold(
+        // Exclude IME from Scaffold's contentWindowInsets so that imePadding()
+        // on the HorizontalPager can observe and apply keyboard insets directly.
+        // Without this, Scaffold consumes IME insets and the terminal doesn't
+        // resize when the keyboard opens/closes.
+        contentWindowInsets = ScaffoldDefaults.contentWindowInsets.exclude(WindowInsets.ime),
         bottomBar = {
             NavigationBar {
                 screens.forEachIndexed { index, screen ->
